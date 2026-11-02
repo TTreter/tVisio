@@ -15,17 +15,17 @@
   <img src="https://img.shields.io/badge/WebRTC-Zero--Buffer-emerald" alt="WebRTC Zero-Buffer" />
   <img src="https://img.shields.io/badge/Lat%C3%AAncia-10--17ms%20G2G-purple" alt="Latência 10-17ms" />
   <img src="https://img.shields.io/badge/Windows-DirectShow-0078D6?logo=windows" alt="DirectShow Virtual Camera" />
-  <img src="https://img.shields.io/badge/Mobile-iOS%20%7C%20Android-green" alt="Suporte iOS e Android" />
+  <img src="https://img.shields.io/badge/Mobile-Universal%20PWA-green" alt="Suporte Mobile PWA" />
 </p>
 
 ---
 
 ## 💡 Sobre o tVisio
 
-O **tVisio** é um aplicativo de código aberto de alta performance que transforma qualquer smartphone (iPhone ou Android) em uma **webcam virtual profissional de estúdio** para o seu computador com Windows, compatível nativamente com **OBS Studio, Discord, Google Meet, Zoom, Microsoft Teams e qualquer programa DirectShow**.
+O **tVisio** é um aplicativo de código aberto de alta performance que transforma qualquer smartphone moderno em uma **webcam virtual profissional de estúdio** para o seu computador com Windows, compatível nativamente com **OBS Studio, Discord, Google Meet, Zoom, Microsoft Teams e qualquer programa DirectShow**.
 
 Diferente de soluções convencionais pesadas e proprietárias (como DroidCam, EpocCam ou Camo):
-1. **Zero instalação no celular**: Não requer baixar aplicativos de lojas. Basta ler o **QR Code** na tela do PC usando a câmera nativa do iOS (Safari) ou Android (Chrome).
+1. **Zero instalação no celular**: Não requer baixar aplicativos de lojas. Basta ler o **QR Code** na tela do PC usando a câmera nativa do seu smartphone (Safari, Chrome ou Edge).
 2. **Engenharia de Latência Extrema (10ms a 17ms Glass-to-Glass)**: O sinal de vídeo chega ao PC quase instantaneamente, dispensando sincronizadores manuais de áudio no OBS.
 3. **Eficiência Térmica & Bateria**: Inclui **Modo Eco OLED**, auto-blackout em 8 segundos e desconexão de hardware do elemento `<video>` móvel, mantendo o celular frio e poupando bateria durante transmissões longas.
 4. **Estúdio de Imagem no Cache L1 (Zero-Overhead)**: Ajuste de ganho, contraste, temperatura e zoom digital ePTZ com custo de CPU praticamente nulo via tabelas LUT de 768 bytes processadas em SIMD C++ (OpenCV).
@@ -36,7 +36,7 @@ Diferente de soluções convencionais pesadas e proprietárias (como DroidCam, E
 
 ```
   ┌─────────────────────────────────────────────────────────────┐
-  │                 SMARTPHONE (iOS / Android)                  │
+  │                 SMARTPHONE (Câmera Móvel)                   │
   │  • Sensor da Câmera: Shutter Cap (4ms / 8ms / 16ms)         │
   │  • Lentes Físicas: Principal, Grande Angular, Telefoto      │
   │  • Modo Eco OLED: Desconexão de Hardware (0 decodificação)  │
@@ -95,7 +95,7 @@ Diferente de soluções convencionais pesadas e proprietárias (como DroidCam, E
 ### Requisitos do Sistema
 - **Sistema Operacional:** Windows 10 ou Windows 11 (64-bit).
 - **Python:** Versão 3.10 ou superior instalada ([python.org](https://www.python.org/downloads/)).
-- **Navegador no Celular:** Safari (iOS 15+) ou Google Chrome / Edge (Android 9+).
+- **Navegador no Celular:** Safari, Google Chrome ou Microsoft Edge.
 - **Rede:** Computador e celular conectados à mesma rede Wi-Fi local (redes de 5 GHz recomendadas).
 
 ### Passo a Passo de Instalação
@@ -167,7 +167,7 @@ A janela nativa desktop do **tVisio** abrirá automaticamente.
 
 - O tVisio gera um certificado HTTPS auto-assinado localmente na inicialização para viabilizar as APIs modernas do WebRTC (`getUserMedia`).
 - No **Chrome Android**: Toque em *Avançado* e depois em *Ir para [IP] (não seguro)*.
-- No **Safari iOS**: Toque em *Mostrar detalhes* e depois em *Visitar este site não seguro*.
+- No **Safari**: Toque em *Mostrar detalhes* e depois em *Visitar este site não seguro*.
 </details>
 
 <details>

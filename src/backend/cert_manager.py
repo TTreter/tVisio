@@ -1,7 +1,7 @@
 """
 tVisio — Gerador Automático de Certificados TLS Multi-SAN
 Gera certificados X.509 locais cobrindo todos os IPs ativos (Wi-Fi, Hotspot, USB e Localhost)
-para que navegadores móveis (Safari no iOS e Chrome no Android) autorizem
+para que navegadores móveis (Safari, Chrome, Edge) autorizem
 o acesso à câmera (`navigator.mediaDevices.getUserMedia()`) sob HTTPS.
 Todos os arquivos temporários gerados são mantidos isolados em `_local/certs/`.
 """

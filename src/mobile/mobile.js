@@ -1,7 +1,7 @@
 /**
  * tVisio — Transmissor Mobile (PWA de Ultra-Baixa Latência & Baixo Consumo Térmico)
  * =============================================================================
- * Gerencia a captura de vídeo no navegador do celular (Safari iOS, Chrome Android, Edge),
+ * Gerencia a captura de vídeo no navegador do celular (Safari, Chrome, Edge),
  * negociação WebRTC P2P acelerada por hardware (H.264), controle do sensor da câmera
  * (obturador manual, foco contínuo/travado, lanterna, seleção de lentes físicas),
  * e proteções térmicas para evitar superaquecimento da bateria.
@@ -451,8 +451,8 @@
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     const ua = navigator.userAgent;
     let device = "Smartphone Browser";
-    if (/iPhone/i.test(ua)) device = "iPhone (Safari iOS)";
-    else if (/iPad/i.test(ua)) device = "iPad (Safari iPadOS)";
+    if (/iPhone/i.test(ua)) device = "iPhone (Safari)";
+    else if (/iPad/i.test(ua)) device = "iPad (Safari)";
     else if (/Android/i.test(ua)) device = "Android Smartphone";
 
     ws.send(

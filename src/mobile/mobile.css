@@ -37,7 +37,7 @@ body, html {
   object-fit: cover;
 }
 
-/* iOS Dynamic Capsule Telemetry Pill (Zero GPU backdrop-blur over video to prevent heating) */
+/* Dynamic Capsule Telemetry Pill (Zero GPU backdrop-blur over video to prevent heating) */
 .dynamic-capsule {
   position: fixed;
   top: max(18px, env(safe-area-inset-top, 18px));

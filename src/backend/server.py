@@ -646,7 +646,7 @@ async def run_servers(http_port: int = 8080, https_port: int = 8443) -> None:
     http_site = web.TCPSite(runner, "0.0.0.0", http_port)
     await http_site.start()
 
-    # 2. Servidor HTTPS (Para acesso à câmera no Safari iOS / Chrome Android)
+    # 2. Servidor HTTPS (Para acesso à câmera no navegador móvel do celular)
     https_site = web.TCPSite(runner, "0.0.0.0", https_port, ssl_context=ssl_ctx)
     await https_site.start()
 
