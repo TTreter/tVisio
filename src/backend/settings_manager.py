@@ -23,8 +23,8 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "pan_x": 0.0,  # -1.0 to +1.0
     "pan_y": 0.0,  # -1.0 to +1.0
     "shutter_cap_ms": 8.0,
-    "anti_psm_enabled": True,
-    "resolution_profile": "1920x1080@60",
+    "anti_psm_enabled": False,
+    "resolution_profile": "1280x720@30",
 }
 
 

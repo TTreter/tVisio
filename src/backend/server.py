@@ -161,22 +161,22 @@ class TVisioServer:
 
     async def anti_psm_heartbeat_loop(self) -> None:
         """
-        100Hz (10ms) Anti-PSM Micro-Pulse Generator.
-        Sends a 1-byte binary frame (0x01) to connected mobile clients to keep the
-        smartphone's Wi-Fi radio awake (preventing 50-100ms PSM sleep) without starving event loop.
+        Smart Anti-PSM Micro-Pulse Generator.
+        Only sends keep-alive pulses when WebRTC UDP stream is NOT active (since WebRTC RTP
+        already paces the radio without forcing mobile TCP ACK replies that heat the Wi-Fi chip).
         """
         pulse_packet = b"\x01"
         while True:
-            if self.anti_psm_enabled and self.mobile_ws_clients:
+            if self.anti_psm_enabled and self.mobile_ws_clients and not self.pcs:
                 for ws in list(self.mobile_ws_clients):
                     if not ws.closed:
                         try:
                             await ws.send_bytes(pulse_packet)
                         except Exception:
                             pass
-                await asyncio.sleep(0.010)
+                await asyncio.sleep(0.020)
             else:
-                await asyncio.sleep(0.05)
+                await asyncio.sleep(0.1)
 
     async def push_miniplayer_preview(self, preview_jpeg: Optional[bytes]) -> None:
         """Send low-res (360p) JPEG frame to Desktop Miniplayer clients."""

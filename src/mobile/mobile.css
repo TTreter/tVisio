@@ -1,5 +1,7 @@
 /* ==========================================================================
-   tVisio Mobile Transmitter — iOS Liquid Glass Camera UI & Eco-OLED Mode
+   tVisio Mobile Transmitter — Ultra-Cool Zero-GPU-Blur UI & True 0-Hz Eco-OLED
+   Eliminates per-frame backdrop-filter GPU shaders and CSS keyframe repaints
+   to keep the smartphone cool during long sessions.
    ========================================================================== */
 
 * {
@@ -26,7 +28,7 @@ body, html {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #020512;
+  background: #000000;
 }
 
 #cameraVideo {
@@ -35,7 +37,7 @@ body, html {
   object-fit: cover;
 }
 
-/* iOS Dynamic Capsule Telemetry Pill */
+/* iOS Dynamic Capsule Telemetry Pill (Zero GPU backdrop-blur over video to prevent heating) */
 .dynamic-capsule {
   position: fixed;
   top: max(18px, env(safe-area-inset-top, 18px));
@@ -47,13 +49,9 @@ body, html {
   gap: 9px;
   padding: 8px 16px;
   border-radius: 999px;
-  background: rgba(5, 12, 32, 0.65);
-  backdrop-filter: blur(26px) saturate(190%);
-  -webkit-backdrop-filter: blur(26px) saturate(190%);
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  box-shadow:
-    0 12px 28px rgba(0, 0, 0, 0.5),
-    inset 0 1px 1px rgba(255, 255, 255, 0.45);
+  background: rgba(5, 11, 28, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.35);
   white-space: nowrap;
 }
 
@@ -67,12 +65,10 @@ body, html {
   height: 8px;
   border-radius: 50%;
   background: #FFB020;
-  box-shadow: 0 0 8px #FFB020;
 }
 
 .capsule-dot.live {
   background: #18F296;
-  box-shadow: 0 0 10px #18F296;
 }
 
 .capsule-status {
@@ -90,7 +86,7 @@ body, html {
   font-variant-numeric: tabular-nums;
 }
 
-/* Bottom Liquid Glass Dock */
+/* Bottom Controls Bar (Zero GPU Blur Shader Overhead) */
 .mobile-glass-dock {
   position: fixed;
   bottom: max(24px, env(safe-area-inset-bottom, 24px));
@@ -99,16 +95,12 @@ body, html {
   z-index: 10;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   padding: 10px 14px;
   border-radius: 999px;
-  background: rgba(8, 18, 46, 0.62);
-  backdrop-filter: blur(28px) saturate(200%);
-  -webkit-backdrop-filter: blur(28px) saturate(200%);
-  border: 1px solid rgba(255, 255, 255, 0.24);
-  box-shadow:
-    0 16px 36px rgba(0, 0, 0, 0.55),
-    inset 0 1px 1px rgba(255, 255, 255, 0.45);
+  background: rgba(6, 14, 34, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 
 .m-dock-btn {
@@ -117,29 +109,28 @@ body, html {
   align-items: center;
   justify-content: center;
   gap: 3px;
-  min-width: 68px;
-  padding: 8px 12px;
+  min-width: 62px;
+  padding: 8px 10px;
   border-radius: 999px;
   border: 1px solid transparent;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.07);
   color: #FFFFFF;
-  font-size: 0.7rem;
+  font-size: 0.68rem;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.18s ease;
 }
 
 .m-dock-btn:active,
 .m-dock-btn.active {
-  background: linear-gradient(135deg, rgba(0, 240, 255, 0.28), rgba(232, 56, 255, 0.28));
-  border-color: rgba(0, 240, 255, 0.6);
+  background: rgba(0, 240, 255, 0.22);
+  border-color: rgba(0, 240, 255, 0.55);
 }
 
 .m-icon {
-  font-size: 1.15rem;
+  font-size: 1.1rem;
 }
 
-/* Eco-Glass OLED Black Screen Overlay (Zero VSync Compositor Overhead) */
+/* True 0-Repaint Eco-OLED Black Screen Overlay (Zero CSS animations = 0% Display GPU) */
 .eco-oled-overlay {
   position: fixed;
   inset: 0;
@@ -156,31 +147,26 @@ body, html {
 }
 
 .eco-breathing-node {
-  opacity: 0.16;
+  opacity: 0.14;
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 8px;
   padding: 24px;
-  animation: ecoPulse 4s ease-in-out infinite alternate;
 }
 
 .eco-logo {
-  width: 64px;
-  height: 64px;
+  width: 54px;
+  height: 54px;
 }
 
 .eco-breathing-node p {
-  font-size: 0.85rem;
+  font-size: 0.82rem;
   font-weight: 600;
+  color: #98B8E8;
 }
 
 .eco-breathing-node span {
-  font-size: 0.72rem;
-  color: #88C0FF;
-}
-
-@keyframes ecoPulse {
-  0% { opacity: 0.08; transform: scale(0.97); }
-  100% { opacity: 0.22; transform: scale(1.03); }
+  font-size: 0.7rem;
+  color: #6482B0;
 }
