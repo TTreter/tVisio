@@ -22,6 +22,11 @@
   - **DOM Video Detach (Modo Eco-Glass OLED)**: Desacopla a pré-visualização móvel do *VSync* da tela do celular e apaga os pixels OLED para zero aquecimento.
 - **💎 Interface iOS Liquid Glass & Miniplayer Inteligente**:
   - Enquanto o **Driver de Webcam Virtual** recebe o vídeo em **qualidade máxima (1080p @ 60fps)**, o **Miniplayer** do app renderiza uma sub-amostragem leve (`360p`) com *Ambient Video Glow* (consumindo < 1% de CPU/GPU) e modo *Zero-Render*.
+- **🎨 Estúdio Zero-Overhead (ISP & Cache L1 LUT)**:
+  - **Color Grading em 1 Passada (`cv2.LUT`)**: Exposição, Contraste, Temperatura de Cor e 5 Presets (*Natural*, *Quente*, *Frio*, *Cinema*, *P&B*) calculados em uma tabela de `768 bytes` no Cache L1 (`~0.12ms`).
+  - **Zoom & Pan Digital Zero-Copy (`ePTZ`)**: Use o scroll do mouse sobre o Miniplayer para dar Zoom (`1.0x–3.0x`) e arraste para ajustar o enquadramento via fatiamento de ponteiro NumPy (`0.0ms` de custo).
+  - **Controles de Hardware ISP**: Seletor de múltiplas lentes físicas (*Ultra-Wide*, *Principal*, *Telefoto*, *Frontal*), Trava de Foco (`AF-Lock`), Lanterna, Modo *Freeze Frame* (`0% CPU`), Grade de Enquadramento e Monitor de Bateria do celular.
+  - **Pareamento Persistente (PWA)**: Token fixo salvo localmente para reconectar em 1 toque sem precisar ler o QR Code novamente.
 
 ---
 
