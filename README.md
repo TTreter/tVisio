@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/Licen%C3%A7a-MIT-blue.svg" alt="Licença: MIT" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/Licen%C3%A7a-GPLv3-blue.svg" alt="Licença: GPLv3" /></a>
   <img src="https://img.shields.io/badge/Python-3.10%2B-blue?logo=python" alt="Python 3.10+" />
   <img src="https://img.shields.io/badge/WebRTC-Zero--Buffer-emerald" alt="WebRTC Zero-Buffer" />
   <img src="https://img.shields.io/badge/Lat%C3%AAncia-10--17ms%20G2G-purple" alt="Latência 10-17ms" />
@@ -181,9 +181,9 @@ A janela nativa desktop do **tVisio** abrirá automaticamente.
 
 ## 📄 Licença
 
-Este projeto é software livre licenciado sob a licença **[MIT](LICENSE)**.
+Este projeto é software livre distribuído sob os termos da licença **[GNU General Public License v3.0 (GPLv3)](LICENSE)**.
 
 ```
-Copyright (c) 2026 Tiago Treter
+Copyright (C) 2026 Tiago Treter
 ```
 Consulte o arquivo [`LICENSE`](LICENSE) para mais informações.

@@ -7,7 +7,7 @@ Driver Virtual Cam DirectShow para Windows, e abre automaticamente a janela desk
 nativa no modo sem bordas (--app) com interface Translucent Glass UI.
 
 Desenvolvido por: Tiago Treter (tVisio Team)
-Licença: MIT
+Licença: GPLv3
 =============================================================================
 """
 
