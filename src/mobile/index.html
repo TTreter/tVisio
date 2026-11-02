@@ -15,7 +15,7 @@
   <div class="camera-viewport" id="cameraViewport">
     <video id="cameraVideo" playsinline autoplay muted></video>
 
-    <!-- Top Dynamic Capsule (iOS Liquid Glass Telemetry) -->
+    <!-- Top Dynamic Capsule (Translucent Glass Telemetry) -->
     <div class="dynamic-capsule" id="dynamicCapsule">
       <img src="/assets/icon.svg" alt="tVisio" class="capsule-icon" />
       <span class="capsule-dot" id="capsuleDot"></span>
@@ -23,36 +23,41 @@
       <span class="capsule-metric" id="capsuleRtt">-- ms</span>
     </div>
 
-    <!-- Bottom Liquid Glass Controls Bar -->
+    <!-- Bottom Translucent Glass Controls Bar (Lucide Vector Icons) -->
     <div class="mobile-glass-dock">
       <button class="m-dock-btn" id="mBtnSwitch">
-        <span class="m-icon">🔄</span>
+        <!-- Lucide: switch-camera -->
+        <svg class="m-lucide" viewBox="0 0 24 24"><path d="M11 19H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5"/><path d="M13 5h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-5"/><circle cx="12" cy="12" r="3"/><path d="m18 22-3-3 3-3"/><path d="m6 2 3 3-3 3"/></svg>
         <span>Lente</span>
       </button>
       <button class="m-dock-btn" id="mBtnTorch">
-        <span class="m-icon">🔦</span>
+        <!-- Lucide: flashlight -->
+        <svg class="m-lucide" viewBox="0 0 24 24"><path d="M18 6c0 2-2 2-2 4v10a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2V10c0-2-2-2-2-4V2h12z"/><line x1="6" x2="18" y1="6" y2="6"/><line x1="12" x2="12" y1="12" y2="12"/></svg>
         <span>Luz</span>
       </button>
       <button class="m-dock-btn" id="mBtnAfLock">
-        <span class="m-icon">🔒</span>
-        <span>Foco AF</span>
+        <!-- Lucide: focus -->
+        <svg class="m-lucide" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/></svg>
+        <span>Foco</span>
       </button>
       <button class="m-dock-btn" id="mBtnShutter">
-        <span class="m-icon">⚡</span>
+        <!-- Lucide: zap -->
+        <svg class="m-lucide" viewBox="0 0 24 24"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>
         <span id="mShutterText">8ms</span>
       </button>
       <button class="m-dock-btn" id="mBtnEco">
-        <span class="m-icon">❄️</span>
+        <!-- Lucide: moon -->
+        <svg class="m-lucide" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
         <span>Eco OLED</span>
       </button>
     </div>
   </div>
 
-  <!-- Eco-Glass OLED Screen Saver Overlay (DOM Video Detach for Zero VSync Overhead) -->
+  <!-- Eco-OLED Screen Saver Overlay (DOM Video Detach for Zero VSync Overhead) -->
   <div class="eco-oled-overlay hidden" id="ecoOverlay">
     <div class="eco-breathing-node">
       <img src="/assets/icon.svg" alt="tVisio Active" class="eco-logo" />
-      <p>tVisio Transmitindo em Modo Eco-Glass</p>
+      <p>tVisio Transmitindo em Modo Eco OLED</p>
       <span>VSync Desacoplado • Toque em qualquer lugar para ver a imagem</span>
     </div>
   </div>

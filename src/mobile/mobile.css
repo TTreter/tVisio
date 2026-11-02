@@ -126,8 +126,14 @@ body, html {
   border-color: rgba(0, 240, 255, 0.55);
 }
 
-.m-icon {
-  font-size: 1.1rem;
+.m-lucide {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.85;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 /* True 0-Repaint Eco-OLED Black Screen Overlay (Zero CSS animations = 0% Display GPU) */

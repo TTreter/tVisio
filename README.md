@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>Transforme qualquer smartphone ou dispositivo com navegador em uma Webcam Virtual de latência ultra-baixa via QR Code.</strong><br/>
-  Zero instalação no celular • Design System <em>iOS Liquid Glass</em> • Motor Zero-Buffer (&lt; 15ms)
+  Zero instalação no celular • <em>Translucent Glass UI</em> (Lucide Icons) • Motor Zero-Buffer (&lt; 15ms)
 </p>
 
 ---
@@ -20,7 +20,7 @@
   - **Pulso Anti-PSM (500 Hz)**: Batimento cardíaco UDP/WS de 1 byte a cada `2ms` que impede o chip Wi-Fi do celular de entrar em *Power Save Mode*.
   - **QoS de Hardware WMM (`DSCP EF`)**: Marcação de pacotes com prioridade de voz/vídeo (`IP_TOS = 0xB8`).
   - **DOM Video Detach (Modo Eco-Glass OLED)**: Desacopla a pré-visualização móvel do *VSync* da tela do celular e apaga os pixels OLED para zero aquecimento.
-- **💎 Interface iOS Liquid Glass & Miniplayer Inteligente**:
+- **💎 Interface Translucent Glass UI & Miniplayer Inteligente**:
   - Enquanto o **Driver de Webcam Virtual** recebe o vídeo em **qualidade máxima (1080p @ 60fps)**, o **Miniplayer** do app renderiza uma sub-amostragem leve (`360p`) com *Ambient Video Glow* (consumindo < 1% de CPU/GPU) e modo *Zero-Render*.
 - **🎨 Estúdio Zero-Overhead (ISP & Cache L1 LUT)**:
   - **Color Grading em 1 Passada (`cv2.LUT`)**: Exposição, Contraste, Temperatura de Cor e 5 Presets (*Natural*, *Quente*, *Frio*, *Cinema*, *P&B*) calculados em uma tabela de `768 bytes` no Cache L1 (`~0.12ms`).

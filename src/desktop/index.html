@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="/desktop-static/styles.css" />
 </head>
 <body>
-  <!-- Ambient Background Liquid Orbs -->
+  <!-- Subtle Ambient Background Light Orbs -->
   <div class="ambient-bg">
     <div class="orb orb-cyan"></div>
     <div class="orb orb-violet"></div>
@@ -16,7 +16,7 @@
   </div>
 
   <div class="app-shell" id="appShell">
-    <!-- Top Header Bar (Liquid Glass Capsule) -->
+    <!-- Top Header Bar (Translucent Glass Capsule) -->
     <header class="glass-header">
       <div class="brand-group">
         <img src="/assets/icon.svg" alt="tVisio Icon" class="brand-icon" />
@@ -38,7 +38,11 @@
 
         <div class="metric-chip" title="Latência Ponta a Ponta Estimada (Glass-to-Glass)">
           <span class="metric-label">G2G DELAY</span>
-          <span class="metric-value cyan-glow" id="g2gValue">-- ms</span>
+          <div class="metric-val-row cyan-glow">
+            <!-- Lucide: zap -->
+            <svg class="lucide-sm" viewBox="0 0 24 24"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>
+            <span class="metric-value" id="g2gValue">-- ms</span>
+          </div>
         </div>
 
         <div class="metric-chip" title="Tempo de Resposta do Rádio Wi-Fi / USB (Round-Trip Time)">
@@ -53,42 +57,56 @@
 
         <div class="metric-chip" title="Nível de Bateria do Smartphone">
           <span class="metric-label">BATERIA</span>
-          <span class="metric-value" id="batteryValue">🔋 --%</span>
+          <div class="metric-val-row" id="batteryRow">
+            <!-- Lucide: battery -->
+            <svg class="lucide-sm" id="batteryIcon" viewBox="0 0 24 24"><rect width="16" height="10" x="2" y="7" rx="2" ry="2"/><line x1="22" x2="22" y1="11" y2="13"/></svg>
+            <span class="metric-value" id="batteryValue">--%</span>
+          </div>
         </div>
 
-        <button class="glass-icon-btn" id="btnPipMode" title="Alternar Modo Miniplayer Compacto (PiP Pod)">
-          <span>🗗</span>
+        <button class="glass-icon-btn" id="btnPipMode" title="Alternar Modo Miniplayer Compacto (PiP)">
+          <!-- Lucide: picture-in-picture-2 -->
+          <svg class="lucide-icon" viewBox="0 0 24 24"><path d="M21 9V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v10c0 1.1.9 2 2 2h4"/><rect width="10" height="7" x="12" y="13" rx="2"/></svg>
         </button>
       </div>
     </header>
 
-    <!-- Main Content Grid -->
+    <!-- Main Content Grid (Locked 100vh Zero-Scroll) -->
     <main class="main-grid">
-      <!-- LEFT / CENTER COLUMN: Intelligent Low-Overhead Miniplayer -->
+      <!-- LEFT COLUMN: Intelligent Low-Overhead Miniplayer -->
       <section class="miniplayer-section glass-card">
         <div class="card-header">
           <div class="card-title-group">
             <span class="card-badge">MINIPLAYER LEVE (360p)</span>
             <span class="protocol-tag" id="protocolTag">WebRTC Zero-Buffer</span>
-            <span class="zoom-badge hidden" id="zoomBadge" title="Clique para resetar o Zoom ePTZ">🔍 1.0x</span>
+            <button class="zoom-badge hidden" id="zoomBadge" title="Clique para resetar o Zoom ePTZ">
+              <!-- Lucide: search -->
+              <svg class="lucide-xs" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+              <span id="zoomBadgeText">1.0x</span>
+            </button>
           </div>
           <div class="miniplayer-header-actions">
-            <button class="pill-btn" id="btnToggleGrid" title="Exibir Grade de Enquadramento (Regra dos Terços em CSS puro)">
-              <span># Grade</span>
+            <button class="pill-btn" id="btnToggleGrid" title="Exibir Grade de Enquadramento (Regra dos Terços)">
+              <!-- Lucide: grid-3x3 -->
+              <svg class="lucide-sm" viewBox="0 0 24 24"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/><path d="M15 3v18"/></svg>
+              <span>Grade</span>
             </button>
             <button class="pill-btn" id="btnTogglePreview" title="Desativar renderização do preview para 0% de uso de GPU na janela">
-              <span id="previewToggleIcon">👁️</span>
+              <!-- Lucide: eye -->
+              <svg class="lucide-sm" id="eyeIconOpen" viewBox="0 0 24 24"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg>
+              <!-- Lucide: eye-off -->
+              <svg class="lucide-sm hidden" id="eyeIconOff" viewBox="0 0 24 24"><path d="M10.733 5.076a10.744 10.744 0 0 1 11.205 6.575 1 1 0 0 1 0 .696 10.747 10.747 0 0 1-1.444 2.49"/><path d="M14.084 14.158a3 3 0 0 1-4.242-4.242"/><path d="M17.479 17.499a10.75 10.75 0 0 1-15.417-5.151 1 1 0 0 1 0-.696 10.75 10.75 0 0 1 4.446-5.143"/><path d="m2 2 20 20"/></svg>
               <span id="previewToggleText">Preview Ativo</span>
             </button>
           </div>
         </div>
 
         <!-- Miniplayer Stage with Ambient Video Glow & ePTZ Mouse Control -->
-        <div class="miniplayer-stage" id="miniplayerStage" title="Use a roda do mouse para dar Zoom e arraste para ajustar o enquadramento (ePTZ Zero-Copy)">
+        <div class="miniplayer-stage" id="miniplayerStage" title="Roda do mouse: Zoom ePTZ • Arraste: Mover enquadramento">
           <canvas id="ambientCanvas" class="ambient-video-glow"></canvas>
           <canvas id="previewCanvas" class="preview-canvas"></canvas>
 
-          <!-- Pure CSS Rule-of-Thirds Grid Overlay (0.0ms Video Cost) -->
+          <!-- Pure CSS Rule-of-Thirds Grid Overlay -->
           <div class="grid-thirds-overlay hidden" id="gridOverlay">
             <div class="grid-line-v v1"></div>
             <div class="grid-line-v v2"></div>
@@ -96,49 +114,59 @@
             <div class="grid-line-h h2"></div>
           </div>
 
-          <!-- Empty State Overlay -->
+          <!-- Full-Bleed Empty State Overlay -->
           <div class="empty-stage-overlay" id="emptyOverlay">
-            <img src="/assets/icon.svg" alt="tVisio" class="empty-stage-logo" />
+            <div class="empty-logo-ring">
+              <img src="/assets/icon.svg" alt="tVisio" class="empty-stage-logo" />
+            </div>
             <h3>Pronto para Conectar</h3>
-            <p>Aponte a câmera do seu celular para o QR Code ao lado.<br/>Token fixo ativo: adicione à tela inicial do celular para conectar em 1 toque!</p>
+            <p>Aponte a câmera do seu celular para o QR Code ao lado.<br/>Token fixo ativo: adicione à tela inicial do celular para conectar em 1 toque.</p>
           </div>
 
           <!-- Paused Preview Overlay (Zero-Render Mode) -->
           <div class="paused-stage-overlay hidden" id="pausedOverlay">
-            <span class="paused-icon">⚡</span>
+            <!-- Lucide: zap -->
+            <svg class="paused-svg-icon" viewBox="0 0 24 24"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>
             <h4>Modo Zero-Render Ativo</h4>
-            <p>O Miniplayer está pausado para economizar 100% de GPU/CPU na janela.<br/>Sua Webcam Virtual segue recebendo o vídeo em qualidade máxima!</p>
+            <p>O Miniplayer está pausado para economizar 100% de GPU/CPU na janela.<br/>Sua Webcam Virtual segue recebendo o vídeo em qualidade máxima.</p>
           </div>
 
-          <!-- Floating Liquid Glass Controls (Appear on Hover) -->
+          <!-- Proportional Translucent Glass Dock (All 7 buttons fit with clean Lucide SVGs) -->
           <div class="floating-glass-dock">
             <button class="dock-btn" id="btnSwitchCam" title="Alternar entre as Lentes Físicas do Celular">
-              <span class="dock-icon">🔄</span>
-              <span class="dock-label">Lente</span>
+              <!-- Lucide: switch-camera -->
+              <svg class="lucide-dock" viewBox="0 0 24 24"><path d="M11 19H4a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h5"/><path d="M13 5h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2h-5"/><circle cx="12" cy="12" r="3"/><path d="m18 22-3-3 3-3"/><path d="m6 2 3 3-3 3"/></svg>
+              <span>Lente</span>
             </button>
             <button class="dock-btn" id="btnAfLock" title="Travar Foco Óptico (AF-Lock no chip ISP)">
-              <span class="dock-icon">🔒</span>
-              <span class="dock-label">Foco AF</span>
+              <!-- Lucide: focus -->
+              <svg class="lucide-dock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M3 7V5a2 2 0 0 1 2-2h2"/><path d="M17 3h2a2 2 0 0 1 2 2v2"/><path d="M21 17v2a2 2 0 0 1-2 2h-2"/><path d="M7 21H5a2 2 0 0 1-2-2v-2"/></svg>
+              <span>Foco</span>
             </button>
             <button class="dock-btn" id="btnTorch" title="Ligar / Desligar Lanterna do Celular">
-              <span class="dock-icon">🔦</span>
-              <span class="dock-label">Luz</span>
+              <!-- Lucide: flashlight -->
+              <svg class="lucide-dock" viewBox="0 0 24 24"><path d="M18 6c0 2-2 2-2 4v10a2 2 0 0 1-2 2h-4a2 2 0 0 1-2-2V10c0-2-2-2-2-4V2h12z"/><line x1="6" x2="18" y1="6" y2="6"/><line x1="12" x2="12" y1="12" y2="12"/></svg>
+              <span>Luz</span>
             </button>
             <button class="dock-btn" id="btnFreeze" title="Congelar Quadro Instantaneamente (Modo Privacidade 0% CPU)">
-              <span class="dock-icon">⏸️</span>
-              <span class="dock-label" id="freezeLabel">Congelar</span>
+              <!-- Lucide: pause -->
+              <svg class="lucide-dock" viewBox="0 0 24 24"><rect x="14" y="4" width="4" height="16" rx="1"/><rect x="6" y="4" width="4" height="16" rx="1"/></svg>
+              <span id="freezeLabel">Pausar</span>
             </button>
             <button class="dock-btn" id="btnMirrorH" title="Espelhar Horizontalmente">
-              <span class="dock-icon">🪞</span>
-              <span class="dock-label">Espelhar</span>
+              <!-- Lucide: flip-horizontal-2 -->
+              <svg class="lucide-dock" viewBox="0 0 24 24"><path d="m3 7 5 5-5 5V7"/><path d="m21 7-5 5 5 5V7"/><path d="M12 20v2"/><path d="M12 14v2"/><path d="M12 8v2"/><path d="M12 2v2"/></svg>
+              <span>Espelhar</span>
             </button>
             <button class="dock-btn" id="btnRotate" title="Girar Imagem em 90°">
-              <span class="dock-icon">↻</span>
-              <span class="dock-label">Girar</span>
+              <!-- Lucide: rotate-cw -->
+              <svg class="lucide-dock" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>
+              <span>Girar</span>
             </button>
-            <button class="dock-btn" id="btnEcoMode" title="Modo Eco-Glass (Apagar tela OLED do celular mantendo a transmissão)">
-              <span class="dock-icon">❄️</span>
-              <span class="dock-label">Tela Eco</span>
+            <button class="dock-btn" id="btnEcoMode" title="Modo Eco OLED (Apagar tela do celular mantendo a transmissão)">
+              <!-- Lucide: moon -->
+              <svg class="lucide-dock" viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+              <span>Eco</span>
             </button>
           </div>
         </div>
@@ -149,77 +177,118 @@
             <span class="vcam-indicator" id="vcamDot"></span>
             <div>
               <strong id="vcamName">tVisio Virtual Camera</strong>
-              <span class="vcam-sub" id="vcamResolution">Stream Principal: 1080p60 DirectShow</span>
+              <span class="vcam-sub" id="vcamResolution">Stream Principal: 1080p DirectShow</span>
             </div>
           </div>
           <button class="orbit-action-btn" id="btnInstallVcam">
-            <span>⚡ Ativar Driver Virtual Cam</span>
+            <!-- Lucide: zap -->
+            <svg class="lucide-sm" viewBox="0 0 24 24"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg>
+            <span id="btnInstallVcamText">Ativar Driver Virtual Cam</span>
           </button>
         </div>
       </section>
 
-      <!-- RIGHT COLUMN: QR Code Pairing, Optical ISP & L1-LUT Color Studio -->
-      <aside class="sidebar-column">
-        <!-- QR Code Pairing Card -->
-        <div class="glass-card qr-card">
-          <div class="card-header">
-            <span class="card-badge">CONEXÃO INSTANTÂNEA (TOKEN FIXO)</span>
-            <button class="mini-link-btn" id="btnRefreshNet" title="Atualizar Interfaces de Rede">🔄 Atualizar IPs</button>
+      <!-- RIGHT COLUMN: Segmented Glass Tabs (Zero Vertical Scroll!) -->
+      <aside class="sidebar-column glass-card">
+        <!-- Segmented Tab Switcher -->
+        <div class="sidebar-tabs-header">
+          <div class="segmented-tabs" id="sidebarTabs">
+            <button class="tab-btn active" data-tab="tabConnection">
+              <!-- Lucide: qr-code -->
+              <svg class="lucide-sm" viewBox="0 0 24 24"><rect width="5" height="5" x="3" y="3" rx="1"/><rect width="5" height="5" x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/><path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/><path d="M12 16v.01"/><path d="M16 12h1"/><path d="M21 12v.01"/><path d="M12 21v-1"/></svg>
+              <span>Conexão &amp; Rede</span>
+            </button>
+            <button class="tab-btn" data-tab="tabStudio">
+              <!-- Lucide: sliders-horizontal -->
+              <svg class="lucide-sm" viewBox="0 0 24 24"><line x1="21" x2="14" y1="4" y2="4"/><line x1="10" x2="3" y1="4" y2="4"/><line x1="21" x2="12" y1="12" y2="12"/><line x1="8" x2="3" y1="12" y2="12"/><line x1="21" x2="16" y1="20" y2="20"/><line x1="12" x2="3" y1="20" y2="20"/><line x1="14" x2="14" y1="2" y2="6"/><line x1="8" x2="8" y1="10" y2="14"/><line x1="16" x2="16" y1="18" y2="22"/></svg>
+              <span>Câmera &amp; Cor</span>
+            </button>
           </div>
+        </div>
 
-          <div class="qr-body">
+        <!-- TAB 1: CONEXÃO & REDE -->
+        <div class="tab-panel active" id="tabConnection">
+          <div class="qr-showcase">
             <div class="qr-frame-glass">
+              <span class="vf-corner tl"></span>
+              <span class="vf-corner tr"></span>
+              <span class="vf-corner bl"></span>
+              <span class="vf-corner br"></span>
               <img id="qrImage" src="/api/qr" alt="QR Code tVisio" class="qr-img" />
             </div>
-            <div class="qr-details">
-              <label class="field-label" for="interfaceSelect">Topologia de Rede:</label>
-              <select id="interfaceSelect" class="glass-select"></select>
+            <p class="qr-caption">Escaneie com a câmera do celular para iniciar</p>
+          </div>
 
+          <div class="panel-form-stack">
+            <div class="form-group">
+              <div class="form-label-row">
+                <label class="field-label" for="interfaceSelect">Topologia de Rede Local</label>
+                <button class="inline-action-btn" id="btnRefreshNet" title="Re-escanear Adaptadores de Rede">
+                  <!-- Lucide: refresh-cw -->
+                  <svg class="lucide-xs" viewBox="0 0 24 24"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+                  <span>Atualizar IPs</span>
+                </button>
+              </div>
+              <select id="interfaceSelect" class="glass-select"></select>
+            </div>
+
+            <div class="form-group">
+              <label class="field-label">Link Direto de Pareamento (Token Fixo)</label>
               <div class="pairing-url-box" id="pairingUrlBox" title="Clique para copiar o link fixo">
                 <code id="pairingUrlText">https://...</code>
+                <!-- Lucide: copy -->
+                <svg class="lucide-sm copy-icon" id="copyIcon" viewBox="0 0 24 24"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
               </div>
+            </div>
 
-              <button class="secondary-glass-btn" id="btnHotspot">
-                <span>📡 Abrir Hotspot Direto 1-Hop (5GHz)</span>
-              </button>
+            <button class="secondary-glass-btn full-width-btn" id="btnHotspot">
+              <!-- Lucide: wifi -->
+              <svg class="lucide-sm" viewBox="0 0 24 24"><path d="M12 20h.01"/><path d="M2 8.82a15 15 0 0 1 20 0"/><path d="M5 12.859a10 10 0 0 1 14 0"/><path d="M8.5 16.429a5 5 0 0 1 7 0"/></svg>
+              <span>Abrir Hotspot Direto 1-Hop (5GHz)</span>
+            </button>
+
+            <div class="control-row compact-bottom-row">
+              <div class="control-info">
+                <span class="control-title">Pulso Anti-PSM Rádio Wi-Fi</span>
+                <span class="control-desc">Ativo apenas em fallback WebSocket</span>
+              </div>
+              <label class="liquid-switch">
+                <input type="checkbox" id="chkAntiPsm" />
+                <span class="switch-slider"></span>
+              </label>
             </div>
           </div>
         </div>
 
-        <!-- Zero-Overhead Studio: ISP Hardware + 1-Pass L1-Cache LUT + ePTZ -->
-        <div class="glass-card tuning-card">
-          <div class="card-header">
-            <span class="card-badge">ESTÚDIO ZERO-OVERHEAD (ISP & L1-LUT)</span>
-            <button class="mini-link-btn" id="btnResetStudio" title="Restaurar Cores e Zoom para o Padrão">↺ Resetar</button>
-          </div>
-
-          <div class="tuning-controls">
-            <!-- Physical Lens Selector + Resolution -->
-            <div class="control-row">
-              <div class="control-info">
-                <span class="control-title">Lente Física & Resolução</span>
-                <span class="control-desc">Hardware óptico direto do celular</span>
-              </div>
-              <div class="dual-select-group">
-                <select id="cameraDeviceSelect" class="glass-select compact-select" title="Escolher Lente Física do Smartphone">
+        <!-- TAB 2: CÂMERA & COR (ESTÚDIO ZERO-OVERHEAD) -->
+        <div class="tab-panel" id="tabStudio">
+          <div class="studio-stack">
+            <!-- Row 1: Full-width Physical Lens & Resolution Selects -->
+            <div class="studio-select-grid">
+              <div class="form-group">
+                <label class="field-label" for="cameraDeviceSelect">Lente Física do Aparelho</label>
+                <select id="cameraDeviceSelect" class="glass-select">
                   <option value="">Lente Padrão (Auto)</option>
                 </select>
-                <select id="resolutionSelect" class="glass-select compact-select">
-                  <option value="1280x720@30" selected>720p @ 30 FPS (❄️ Frio Eco)</option>
+              </div>
+              <div class="form-group">
+                <label class="field-label" for="resolutionSelect">Modo de Captura</label>
+                <select id="resolutionSelect" class="glass-select">
+                  <option value="1280x720@30" selected>720p @ 30 FPS (Frio Eco)</option>
                   <option value="1280x720@60">720p @ 60 FPS (Fluido)</option>
-                  <option value="1920x1080@30">1080p @ 30 FPS (Full HD Eco)</option>
+                  <option value="1920x1080@30">1080p @ 30 FPS (Full HD)</option>
                   <option value="1920x1080@60">1080p @ 60 FPS (Máximo)</option>
                 </select>
               </div>
             </div>
 
-            <!-- Optical Sensor Shutter Speed Capping -->
-            <div class="control-row">
-              <div class="control-info">
-                <span class="control-title">Obturador Óptico (Shutter Cap)</span>
-                <span class="control-desc">Corta até 25ms de exposição do sensor</span>
+            <!-- Row 2: Shutter Speed Cap -->
+            <div class="studio-group">
+              <div class="form-label-row">
+                <span class="field-label">Obturador Óptico (Shutter Cap)</span>
+                <span class="field-hint">Reduz atraso de exposição</span>
               </div>
-              <div class="segmented-glass" id="shutterSegment">
+              <div class="segmented-glass full-seg" id="shutterSegment">
                 <button class="seg-btn" data-shutter="4">4ms</button>
                 <button class="seg-btn active" data-shutter="8">8ms</button>
                 <button class="seg-btn" data-shutter="16">16ms</button>
@@ -227,13 +296,17 @@
               </div>
             </div>
 
-            <!-- 1-Pass L1-Cache Color Presets -->
-            <div class="control-row">
-              <div class="control-info">
-                <span class="control-title">Perfil de Cor (`cv2.LUT` 0.1ms)</span>
-                <span class="control-desc">Tabela 1-Pass de 768B no Cache L1</span>
+            <!-- Row 3: 1-Pass L1-Cache Color Presets -->
+            <div class="studio-group">
+              <div class="form-label-row">
+                <span class="field-label">Perfil de Cor (LUT 1-Pass)</span>
+                <button class="inline-action-btn" id="btnResetStudio" title="Restaurar Cores e Zoom para o Padrão">
+                  <!-- Lucide: rotate-ccw -->
+                  <svg class="lucide-xs" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                  <span>Resetar</span>
+                </button>
               </div>
-              <div class="segmented-glass" id="presetSegment">
+              <div class="segmented-glass full-seg" id="presetSegment">
                 <button class="seg-btn active" data-preset="natural">Natural</button>
                 <button class="seg-btn" data-preset="warm">Quente</button>
                 <button class="seg-btn" data-preset="cool">Frio</button>
@@ -242,40 +315,39 @@
               </div>
             </div>
 
-            <!-- Brightness & Contrast Sliders -->
-            <div class="control-row">
-              <div class="control-info">
-                <span class="control-title">Exposição (<span id="gainValText">1.00x</span>) &amp; Contraste (<span id="contrastValText">1.00x</span>)</span>
-                <span class="control-desc">Aplicados juntos na mesma leitura LUT</span>
+            <!-- Row 4: Full-Width Individual Sliders (Double-click to reset) -->
+            <div class="sliders-stack">
+              <div class="slider-item">
+                <div class="slider-header">
+                  <span>Exposição (Brilho)</span>
+                  <strong id="gainValText">1.00x</strong>
+                </div>
+                <input type="range" id="sliderGain" min="0.6" max="2.2" step="0.05" value="1.0" class="glass-slider" title="Duplo clique para resetar para 1.00x" />
               </div>
-              <div class="dual-slider-group">
-                <input type="range" id="sliderGain" min="0.6" max="2.2" step="0.05" value="1.0" class="liquid-slider" title="Ganho de Brilho / Exposição" />
-                <input type="range" id="sliderContrast" min="0.7" max="1.6" step="0.05" value="1.0" class="liquid-slider" title="Contraste" />
-              </div>
-            </div>
 
-            <!-- Color Temp & Zero-Copy ePTZ Zoom Sliders -->
-            <div class="control-row">
-              <div class="control-info">
-                <span class="control-title">Balanço (<span id="tempValText">0K</span>) &amp; Zoom ePTZ (<span id="zoomValText">1.0x</span>)</span>
-                <span class="control-desc">Arraste o vídeo no player para mover o Zoom</span>
+              <div class="slider-item">
+                <div class="slider-header">
+                  <span>Contraste Dinâmico</span>
+                  <strong id="contrastValText">1.00x</strong>
+                </div>
+                <input type="range" id="sliderContrast" min="0.7" max="1.6" step="0.05" value="1.0" class="glass-slider" title="Duplo clique para resetar para 1.00x" />
               </div>
-              <div class="dual-slider-group">
-                <input type="range" id="sliderTemp" min="-1.0" max="1.0" step="0.05" value="0.0" class="liquid-slider" title="Temperatura de Cor (Frio <-> Quente)" />
-                <input type="range" id="sliderZoom" min="1.0" max="3.0" step="0.05" value="1.0" class="liquid-slider" title="Zoom Digital Zero-Copy (ePTZ)" />
-              </div>
-            </div>
 
-            <!-- Anti-PSM Wi-Fi Keep-Alive Toggle -->
-            <div class="control-row">
-              <div class="control-info">
-                <span class="control-title">Pulso Anti-PSM Rádio Wi-Fi</span>
-                <span class="control-desc">Impede micro-sleep do chip Wi-Fi móvel</span>
+              <div class="slider-item">
+                <div class="slider-header">
+                  <span>Temperatura de Cor (Frio / Quente)</span>
+                  <strong id="tempValText">Neutro</strong>
+                </div>
+                <input type="range" id="sliderTemp" min="-1.0" max="1.0" step="0.05" value="0.0" class="glass-slider" title="Duplo clique para resetar para Neutro" />
               </div>
-              <label class="liquid-switch">
-                <input type="checkbox" id="chkAntiPsm" />
-                <span class="switch-slider"></span>
-              </label>
+
+              <div class="slider-item">
+                <div class="slider-header">
+                  <span>Zoom Digital Zero-Copy (ePTZ)</span>
+                  <strong id="zoomValText">1.0x</strong>
+                </div>
+                <input type="range" id="sliderZoom" min="1.0" max="3.0" step="0.05" value="1.0" class="glass-slider" title="Duplo clique para resetar o Zoom para 1.0x" />
+              </div>
             </div>
           </div>
         </div>

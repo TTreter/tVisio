@@ -335,7 +335,7 @@
           const sampleRtt = performance.now() - msg.ts;
           if (sampleRtt > 0 && sampleRtt < 1000) {
             rttMs = rttMs * 0.75 + sampleRtt * 0.25;
-            capsuleRtt.textContent = `⚡ ${(rttMs * 0.5 + shutterCapMs).toFixed(1)} ms`;
+            capsuleRtt.textContent = `${(rttMs * 0.5 + shutterCapMs).toFixed(1)} ms`;
           }
           frameInFlight = false;
         } else if (msg.type === "command") {

@@ -1,5 +1,5 @@
 /**
- * tVisio — Desktop Liquid Glass Controller, L1-LUT Color Studio & Zero-Copy ePTZ
+ * tVisio — Translucent Glass UI Controller, L1-LUT Color Studio & Zero-Copy ePTZ
  */
 
 (() => {
@@ -13,6 +13,7 @@
   const pausedOverlay = document.getElementById("pausedOverlay");
   const gridOverlay = document.getElementById("gridOverlay");
   const zoomBadge = document.getElementById("zoomBadge");
+  const zoomBadgeText = document.getElementById("zoomBadgeText");
 
   const connectionBadge = document.getElementById("connectionBadge");
   const connectionText = document.getElementById("connectionText");
@@ -21,12 +22,14 @@
   const rttValue = document.getElementById("rttValue");
   const fpsValue = document.getElementById("fpsValue");
   const batteryValue = document.getElementById("batteryValue");
+  const batteryRow = document.getElementById("batteryRow");
   const protocolTag = document.getElementById("protocolTag");
 
   const vcamDot = document.getElementById("vcamDot");
   const vcamName = document.getElementById("vcamName");
   const vcamResolution = document.getElementById("vcamResolution");
   const btnInstallVcam = document.getElementById("btnInstallVcam");
+  const btnInstallVcamText = document.getElementById("btnInstallVcamText");
 
   const qrImage = document.getElementById("qrImage");
   const interfaceSelect = document.getElementById("interfaceSelect");
@@ -57,6 +60,17 @@
   let isDraggingPan = false;
   let dragStartX = 0;
   let dragStartY = 0;
+
+  // Sidebar Segmented Tabs Switcher
+  document.querySelectorAll("#sidebarTabs .tab-btn").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll("#sidebarTabs .tab-btn").forEach((b) => b.classList.remove("active"));
+      document.querySelectorAll(".tab-panel").forEach((p) => p.classList.remove("active"));
+      btn.classList.add("active");
+      const targetPanel = document.getElementById(btn.dataset.tab);
+      if (targetPanel) targetPanel.classList.add("active");
+    });
+  });
 
   function connectDesktopWS() {
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
@@ -108,31 +122,30 @@
 
     if (connected) {
       deviceSubtitle.textContent = `Conectado: ${data.device_info} • Obturador ${data.shutter_cap_ms}ms`;
-      g2gValue.textContent = `⚡ ${data.g2g_ms.toFixed(1)} ms`;
+      g2gValue.textContent = `${data.g2g_ms.toFixed(1)} ms`;
       rttValue.textContent = `${data.rtt_ms.toFixed(1)} ms`;
       fpsValue.textContent = `${data.vcam.fps.toFixed(0)} FPS`;
       protocolTag.textContent = data.active_protocol;
 
       if (data.battery_level !== null && data.battery_level !== undefined) {
-        const bolt = data.battery_charging ? " ⚡" : "";
-        batteryValue.textContent = `🔋 ${data.battery_level}%${bolt}`;
-        batteryValue.style.color = data.battery_level <= 15 && !data.battery_charging ? "#FF5252" : "";
+        batteryValue.textContent = `${data.battery_level}%`;
+        batteryRow.style.color = data.battery_level <= 15 && !data.battery_charging ? "#EF4444" : "";
       } else {
-        batteryValue.textContent = "🔋 OK";
+        batteryValue.textContent = "OK";
       }
     } else {
       deviceSubtitle.textContent = "Aguardando pareamento via QR Code...";
       g2gValue.textContent = "-- ms";
       rttValue.textContent = "-- ms";
       fpsValue.textContent = "0 FPS";
-      batteryValue.textContent = "🔋 --%";
+      batteryValue.textContent = "--%";
       emptyOverlay.classList.remove("hidden");
     }
 
     // Update Virtual Camera Driver status
     if (data.vcam.driver_active) {
-      vcamDot.style.background = "#18F296";
-      vcamDot.style.boxShadow = "0 0 12px #18F296";
+      vcamDot.style.background = "#10B981";
+      vcamDot.style.boxShadow = "0 0 10px #10B981";
       vcamName.textContent = data.vcam.backend_name;
       vcamResolution.textContent = `Ativo em ${data.vcam.resolution} • Processamento LUT: ${data.vcam.decode_ms}ms`;
       btnInstallVcam.style.display = "none";
@@ -147,7 +160,7 @@
     document.getElementById("btnTorch").classList.toggle("active", !!data.torch_on);
     document.getElementById("btnAfLock").classList.toggle("active", !!data.af_locked);
     document.getElementById("btnFreeze").classList.toggle("active", !!data.vcam.frozen);
-    document.getElementById("freezeLabel").textContent = data.vcam.frozen ? "Congelado" : "Congelar";
+    document.getElementById("freezeLabel").textContent = data.vcam.frozen ? "Pausado" : "Pausar";
     document.getElementById("btnMirrorH").classList.toggle("active", !!data.vcam.mirror_horizontal);
     document.getElementById("btnEcoMode").classList.toggle("active", !!data.eco_mode);
 
@@ -177,7 +190,7 @@
       data.cameras.forEach((cam, i) => {
         const opt = document.createElement("option");
         opt.value = cam.id;
-        opt.textContent = cam.label || `Câmera #${i + 1}`;
+        opt.textContent = cam.label || `Câmera Física #${i + 1}`;
         if (cam.id === data.selected_cam_id) opt.selected = true;
         cameraDeviceSelect.appendChild(opt);
       });
@@ -204,14 +217,14 @@
   function formatTempLabel(val) {
     const num = Math.round(val * 100);
     if (num === 0) return "Neutro";
-    return num > 0 ? `+${num}Q` : `${num}F`;
+    return num > 0 ? `+${num} Quente` : `${num} Frio`;
   }
 
   function updateZoomUI(zoom) {
     currentZoom = Math.max(1.0, Math.min(3.0, zoom));
     sliderZoom.value = currentZoom;
     zoomValText.textContent = `${currentZoom.toFixed(1)}x`;
-    zoomBadge.textContent = `🔍 ${currentZoom.toFixed(1)}x`;
+    if (zoomBadgeText) zoomBadgeText.textContent = `${currentZoom.toFixed(1)}x`;
     zoomBadge.classList.toggle("hidden", currentZoom <= 1.02);
   }
 
@@ -252,7 +265,8 @@
   document.getElementById("btnTogglePreview").addEventListener("click", () => {
     previewEnabled = !previewEnabled;
     sendCommand({ action: "set_miniplayer_enabled", enabled: previewEnabled });
-    document.getElementById("previewToggleIcon").textContent = previewEnabled ? "👁️" : "⚡";
+    document.getElementById("eyeIconOpen").classList.toggle("hidden", !previewEnabled);
+    document.getElementById("eyeIconOff").classList.toggle("hidden", previewEnabled);
     document.getElementById("previewToggleText").textContent = previewEnabled ? "Preview Ativo" : "Zero-Render";
     pausedOverlay.classList.toggle("hidden", previewEnabled);
   });
@@ -281,7 +295,7 @@
   pairingUrlBox.addEventListener("click", () => {
     navigator.clipboard.writeText(pairingUrlText.textContent);
     const prev = pairingUrlText.textContent;
-    pairingUrlText.textContent = "✓ Link fixo copiado!";
+    pairingUrlText.textContent = "Link copiado para a área de transferência!";
     setTimeout(() => {
       pairingUrlText.textContent = prev;
     }, 1500);
@@ -296,19 +310,19 @@
 
   btnInstallVcam.addEventListener("click", async () => {
     btnInstallVcam.disabled = true;
-    btnInstallVcam.innerHTML = "<span>⏳ Registrando Driver DirectShow...</span>";
+    btnInstallVcamText.textContent = "Registrando Driver DirectShow...";
     try {
       const res = await fetch("/api/install-vcam", { method: "POST" });
       const result = await res.json();
       if (result.ok && result.driver_active) {
-        btnInstallVcam.innerHTML = "<span>✓ Driver Ativo!</span>";
+        btnInstallVcamText.textContent = "Driver Ativo!";
       } else {
-        btnInstallVcam.innerHTML = "<span>⚡ Tentar Novamente (Admin)</span>";
+        btnInstallVcamText.textContent = "Tentar Novamente (Admin)";
         btnInstallVcam.disabled = false;
       }
     } catch (_) {
       btnInstallVcam.disabled = false;
-      btnInstallVcam.innerHTML = "<span>⚡ Ativar Driver Virtual Cam</span>";
+      btnInstallVcamText.textContent = "Ativar Driver Virtual Cam";
     }
   });
 
@@ -322,7 +336,7 @@
     });
   });
 
-  // 1-Pass L1-Cache Color Studio Presets & Sliders
+  // 1-Pass L1-Cache Color Studio Presets & Sliders (with Double-Click to Reset)
   document.querySelectorAll("#presetSegment .seg-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       document.querySelectorAll("#presetSegment .seg-btn").forEach((b) => b.classList.remove("active"));
@@ -336,11 +350,21 @@
     gainValText.textContent = `${val.toFixed(2)}x`;
     sendCommand({ action: "set_color_studio", brightness_gain: val });
   });
+  sliderGain.addEventListener("dblclick", () => {
+    sliderGain.value = 1.0;
+    gainValText.textContent = "1.00x";
+    sendCommand({ action: "set_color_studio", brightness_gain: 1.0 });
+  });
 
   sliderContrast.addEventListener("input", () => {
     const val = parseFloat(sliderContrast.value);
     contrastValText.textContent = `${val.toFixed(2)}x`;
     sendCommand({ action: "set_color_studio", contrast: val });
+  });
+  sliderContrast.addEventListener("dblclick", () => {
+    sliderContrast.value = 1.0;
+    contrastValText.textContent = "1.00x";
+    sendCommand({ action: "set_color_studio", contrast: 1.0 });
   });
 
   sliderTemp.addEventListener("input", () => {
@@ -348,12 +372,23 @@
     tempValText.textContent = formatTempLabel(val);
     sendCommand({ action: "set_color_studio", color_temp: val });
   });
+  sliderTemp.addEventListener("dblclick", () => {
+    sliderTemp.value = 0.0;
+    tempValText.textContent = "Neutro";
+    sendCommand({ action: "set_color_studio", color_temp: 0.0 });
+  });
 
   // Zero-Copy ePTZ Zoom & Mouse Wheel / Drag Pan on Miniplayer
   sliderZoom.addEventListener("input", () => {
     const z = parseFloat(sliderZoom.value);
     updateZoomUI(z);
     sendCommand({ action: "set_eptz", zoom_level: currentZoom });
+  });
+  sliderZoom.addEventListener("dblclick", () => {
+    panX = 0.0;
+    panY = 0.0;
+    updateZoomUI(1.0);
+    sendCommand({ action: "set_eptz", zoom_level: 1.0, pan_x: 0.0, pan_y: 0.0 });
   });
 
   zoomBadge.addEventListener("click", () => {
