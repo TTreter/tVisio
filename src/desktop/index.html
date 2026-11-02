@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>tVisio — Ultra-Low Latency Virtual Webcam</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/icon.svg" />
+  <link rel="stylesheet" href="/desktop-static/styles.css" />
+</head>
+<body>
+  <!-- Ambient Background Liquid Orbs -->
+  <div class="ambient-bg">
+    <div class="orb orb-cyan"></div>
+    <div class="orb orb-violet"></div>
+    <div class="orb orb-cobalt"></div>
+  </div>
+
+  <div class="app-shell" id="appShell">
+    <!-- Top Header Bar (Liquid Glass Capsule) -->
+    <header class="glass-header">
+      <div class="brand-group">
+        <img src="/assets/icon.svg" alt="tVisio Icon" class="brand-icon" />
+        <div class="brand-titles">
+          <div class="brand-name-row">
+            <h1>tVisio</h1>
+            <span class="version-pill">ULTRA-LOW LATENCY</span>
+          </div>
+          <p class="brand-subtitle" id="deviceSubtitle">Aguardando pareamento via QR Code...</p>
+        </div>
+      </div>
+
+      <!-- Real-Time Telemetry Pill -->
+      <div class="telemetry-bar">
+        <div class="status-badge" id="connectionBadge">
+          <span class="status-dot"></span>
+          <span id="connectionText">Standby</span>
+        </div>
+
+        <div class="metric-chip" title="Latência Ponta a Ponta Estimada (Glass-to-Glass)">
+          <span class="metric-label">G2G DELAY</span>
+          <span class="metric-value cyan-glow" id="g2gValue">-- ms</span>
+        </div>
+
+        <div class="metric-chip" title="Tempo de Resposta do Rádio Wi-Fi / USB (Round-Trip Time)">
+          <span class="metric-label">PING RÁDIO</span>
+          <span class="metric-value" id="rttValue">-- ms</span>
+        </div>
+
+        <div class="metric-chip" title="Taxa de Quadros Recebidos no Host">
+          <span class="metric-label">TAXA</span>
+          <span class="metric-value" id="fpsValue">0 FPS</span>
+        </div>
+
+        <button class="glass-icon-btn" id="btnPipMode" title="Alternar Modo Miniplayer Compacto (PiP Pod)">
+          <span>🗗</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Content Grid -->
+    <main class="main-grid">
+      <!-- LEFT / CENTER COLUMN: Intelligent Low-Overhead Miniplayer -->
+      <section class="miniplayer-section glass-card">
+        <div class="card-header">
+          <div class="card-title-group">
+            <span class="card-badge">MINIPLAYER LEVE (360p PREVIEW)</span>
+            <span class="protocol-tag" id="protocolTag">WebRTC Zero-Buffer</span>
+          </div>
+          <div class="miniplayer-header-actions">
+            <button class="pill-btn" id="btnTogglePreview" title="Desativar renderização do preview para 0% de uso de GPU na janela">
+              <span id="previewToggleIcon">👁️</span>
+              <span id="previewToggleText">Preview Ativo</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Miniplayer Stage with Ambient Video Glow -->
+        <div class="miniplayer-stage" id="miniplayerStage">
+          <canvas id="ambientCanvas" class="ambient-video-glow"></canvas>
+          <canvas id="previewCanvas" class="preview-canvas"></canvas>
+
+          <!-- Empty State Overlay (When no phone connected yet) -->
+          <div class="empty-stage-overlay" id="emptyOverlay">
+            <img src="/assets/icon.svg" alt="tVisio" class="empty-stage-logo" />
+            <h3>Pronto para Conectar</h3>
+            <p>Aponte a câmera do seu celular para o QR Code ao lado.<br/>Zero instalação necessária no smartphone.</p>
+          </div>
+
+          <!-- Paused Preview Overlay (Zero-Render Mode) -->
+          <div class="paused-stage-overlay hidden" id="pausedOverlay">
+            <span class="paused-icon">⚡</span>
+            <h4>Modo Zero-Render Ativo</h4>
+            <p>O Miniplayer está pausado para economizar 100% de GPU/CPU na janela.<br/>Sua Webcam Virtual segue recebendo o vídeo em qualidade máxima!</p>
+          </div>
+
+          <!-- Floating Liquid Glass Controls (Appear on Hover) -->
+          <div class="floating-glass-dock">
+            <button class="dock-btn" id="btnSwitchCam" title="Alternar Câmera Frontal / Traseira">
+              <span class="dock-icon">🔄</span>
+              <span class="dock-label">Lente</span>
+            </button>
+            <button class="dock-btn" id="btnTorch" title="Ligar / Desligar Lanterna do Celular">
+              <span class="dock-icon">🔦</span>
+              <span class="dock-label">Luz</span>
+            </button>
+            <button class="dock-btn" id="btnMirrorH" title="Espelhar Horizontalmente">
+              <span class="dock-icon">🪞</span>
+              <span class="dock-label">Espelhar</span>
+            </button>
+            <button class="dock-btn" id="btnRotate" title="Girar Imagem em 90°">
+              <span class="dock-icon">↻</span>
+              <span class="dock-label">Girar</span>
+            </button>
+            <button class="dock-btn" id="btnEcoMode" title="Modo Eco-Glass (Apagar tela OLED do celular mantendo a transmissão)">
+              <span class="dock-icon">❄️</span>
+              <span class="dock-label">Tela Eco</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Bottom Virtual Camera Driver Bar -->
+        <div class="vcam-status-bar">
+          <div class="vcam-info">
+            <span class="vcam-indicator" id="vcamDot"></span>
+            <div>
+              <strong id="vcamName">tVisio Virtual Camera</strong>
+              <span class="vcam-sub" id="vcamResolution">Stream Principal: 1080p60 DirectShow</span>
+            </div>
+          </div>
+          <button class="orbit-action-btn" id="btnInstallVcam">
+            <span>⚡ Ativar Driver Virtual Cam</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- RIGHT COLUMN: QR Code Pairing & Extreme Latency Tuning -->
+      <aside class="sidebar-column">
+        <!-- QR Code Pairing Card -->
+        <div class="glass-card qr-card">
+          <div class="card-header">
+            <span class="card-badge">CONEXÃO INSTANTÂNEA</span>
+            <button class="mini-link-btn" id="btnRefreshNet" title="Atualizar Interfaces de Rede">🔄 Atualizar IPs</button>
+          </div>
+
+          <div class="qr-body">
+            <div class="qr-frame-glass">
+              <img id="qrImage" src="/api/qr" alt="QR Code tVisio" class="qr-img" />
+            </div>
+            <div class="qr-details">
+              <label class="field-label" for="interfaceSelect">Topologia de Rede:</label>
+              <select id="interfaceSelect" class="glass-select"></select>
+
+              <div class="pairing-url-box" id="pairingUrlBox" title="Clique para copiar o link">
+                <code id="pairingUrlText">https://...</code>
+              </div>
+
+              <button class="secondary-glass-btn" id="btnHotspot">
+                <span>📡 Abrir Hotspot Direto 1-Hop (5GHz)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Extreme Latency Engineering Controls -->
+        <div class="glass-card tuning-card">
+          <div class="card-header">
+            <span class="card-badge">ENGENHARIA DE LATÊNCIA EXTREMA</span>
+          </div>
+
+          <div class="tuning-controls">
+            <!-- Optical Sensor Shutter Speed Capping -->
+            <div class="control-row">
+              <div class="control-info">
+                <span class="control-title">Obturador Óptico (Shutter Cap)</span>
+                <span class="control-desc">Corta até 25ms de exposição do sensor</span>
+              </div>
+              <div class="segmented-glass" id="shutterSegment">
+                <button class="seg-btn" data-shutter="4">4ms</button>
+                <button class="seg-btn active" data-shutter="8">8ms</button>
+                <button class="seg-btn" data-shutter="16">16ms</button>
+                <button class="seg-btn" data-shutter="33">Auto</button>
+              </div>
+            </div>
+
+            <!-- Anti-PSM 500Hz Wi-Fi Pulse -->
+            <div class="control-row">
+              <div class="control-info">
+                <span class="control-title">Pulso Anti-PSM (500 Hz)</span>
+                <span class="control-desc">Impede micro-sleep do chip Wi-Fi móvel</span>
+              </div>
+              <label class="liquid-switch">
+                <input type="checkbox" id="chkAntiPsm" checked />
+                <span class="switch-slider"></span>
+              </label>
+            </div>
+
+            <!-- PC GPU Brightness Gain Compensation -->
+            <div class="control-row">
+              <div class="control-info">
+                <span class="control-title">Ganho de Luz no PC (<span id="gainValText">1.0x</span>)</span>
+                <span class="control-desc">Compensa obturador rápido sem custo no celular</span>
+              </div>
+              <input type="range" id="sliderGain" min="0.7" max="2.2" step="0.05" value="1.0" class="liquid-slider" />
+            </div>
+
+            <!-- Resolution Selector -->
+            <div class="control-row">
+              <div class="control-info">
+                <span class="control-title">Perfil de Captura</span>
+                <span class="control-desc">Qualidade enviada para a Webcam Virtual</span>
+              </div>
+              <select id="resolutionSelect" class="glass-select compact-select">
+                <option value="1280x720@60">720p @ 60 FPS (Ultra-Fast)</option>
+                <option value="1920x1080@60" selected>1080p @ 60 FPS (Full HD)</option>
+                <option value="1920x1080@30">1080p @ 30 FPS (Estável)</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <script src="/desktop-static/app.js"></script>
+</body>
+</html>

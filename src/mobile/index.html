@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>tVisio Camera Transmitter</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/icon.svg" />
+  <link rel="stylesheet" href="/mobile-static/mobile.css" />
+</head>
+<body>
+  <!-- Camera Live Viewport -->
+  <div class="camera-viewport" id="cameraViewport">
+    <video id="cameraVideo" playsinline autoplay muted></video>
+
+    <!-- Top Dynamic Capsule (iOS Liquid Glass Telemetry) -->
+    <div class="dynamic-capsule" id="dynamicCapsule">
+      <img src="/assets/icon.svg" alt="tVisio" class="capsule-icon" />
+      <span class="capsule-dot" id="capsuleDot"></span>
+      <span class="capsule-status" id="capsuleStatus">Iniciando Câmera...</span>
+      <span class="capsule-metric" id="capsuleRtt">-- ms</span>
+    </div>
+
+    <!-- Bottom Liquid Glass Controls Bar -->
+    <div class="mobile-glass-dock">
+      <button class="m-dock-btn" id="mBtnSwitch">
+        <span class="m-icon">🔄</span>
+        <span>Virar</span>
+      </button>
+      <button class="m-dock-btn" id="mBtnTorch">
+        <span class="m-icon">🔦</span>
+        <span>Luz</span>
+      </button>
+      <button class="m-dock-btn" id="mBtnShutter">
+        <span class="m-icon">⚡</span>
+        <span id="mShutterText">8ms</span>
+      </button>
+      <button class="m-dock-btn" id="mBtnEco">
+        <span class="m-icon">❄️</span>
+        <span>Eco OLED</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Eco-Glass OLED Screen Saver Overlay (DOM Video Detach for Zero VSync Overhead) -->
+  <div class="eco-oled-overlay hidden" id="ecoOverlay">
+    <div class="eco-breathing-node">
+      <img src="/assets/icon.svg" alt="tVisio Active" class="eco-logo" />
+      <p>tVisio Transmitindo em Modo Eco-Glass</p>
+      <span>VSync Desacoplado • Toque em qualquer lugar para ver a imagem</span>
+    </div>
+  </div>
+
+  <script src="/mobile-static/mobile.js"></script>
+</body>
+</html>

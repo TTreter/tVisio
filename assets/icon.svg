@@ -1,0 +1,148 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">tVisio — Liquid Glass App Icon (Transparent Background)</title>
+  <desc id="desc">Floating Liquid Glass smartphone and multi-element optical camera lens wrapped by a 3D cyan-to-magenta orbital stream ring on a transparent background.</desc>
+  <defs>
+    <!-- Deep Liquid Sapphire Glass Phone Interior -->
+    <linearGradient id="phoneInterior" x1="0.1" y1="0.05" x2="0.9" y2="0.95">
+      <stop offset="0%" stop-color="#0B2870" stop-opacity="0.95"/>
+      <stop offset="48%" stop-color="#050E2D" stop-opacity="0.97"/>
+      <stop offset="100%" stop-color="#22054A" stop-opacity="0.96"/>
+    </linearGradient>
+
+    <!-- Liquid Glass Phone Frame Gradient -->
+    <linearGradient id="phoneBorder" x1="0.15" y1="0.05" x2="0.85" y2="0.95">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="38%" stop-color="#E4F5FF"/>
+      <stop offset="72%" stop-color="#45AAFF"/>
+      <stop offset="100%" stop-color="#D67CFF"/>
+    </linearGradient>
+
+    <!-- Inner Glass Specular Reflection -->
+    <linearGradient id="glassSheen" x1="0" y1="0" x2="0.65" y2="0.65">
+      <stop offset="0%" stop-color="#58CEFF" stop-opacity="0.34"/>
+      <stop offset="45%" stop-color="#FFFFFF" stop-opacity="0.06"/>
+      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+
+    <!-- Outer Lens Ring (Liquid Silver/Cyan) -->
+    <linearGradient id="lensOuterRing" x1="0.15" y1="0.1" x2="0.85" y2="0.9">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="55%" stop-color="#DCF2FF"/>
+      <stop offset="100%" stop-color="#6BB8FF"/>
+    </linearGradient>
+
+    <!-- Camera Iris Optical Gradient -->
+    <linearGradient id="lensIris" x1="0.15" y1="0.15" x2="0.85" y2="0.85">
+      <stop offset="0%" stop-color="#1AF2FF"/>
+      <stop offset="38%" stop-color="#0A68FF"/>
+      <stop offset="75%" stop-color="#6200EA"/>
+      <stop offset="100%" stop-color="#C000FF"/>
+    </linearGradient>
+
+    <!-- Deep Lens Core -->
+    <radialGradient id="lensCore" cx="0.4" cy="0.35" r="0.7">
+      <stop offset="0%" stop-color="#0E2A70"/>
+      <stop offset="60%" stop-color="#040B26"/>
+      <stop offset="100%" stop-color="#01030C"/>
+    </radialGradient>
+
+    <!-- 3D Orbital Stream Gradient -->
+    <linearGradient id="orbitGrad" x1="0.05" y1="0.65" x2="0.95" y2="0.35">
+      <stop offset="0%" stop-color="#00F0FF"/>
+      <stop offset="35%" stop-color="#129CFF"/>
+      <stop offset="70%" stop-color="#6A48FF"/>
+      <stop offset="100%" stop-color="#E838FF"/>
+    </linearGradient>
+
+    <!-- Orbit Top Specular Rim -->
+    <linearGradient id="orbitRim" x1="0" y1="0.5" x2="1" y2="0.5">
+      <stop offset="0%" stop-color="#C8FEFF" stop-opacity="0.95"/>
+      <stop offset="50%" stop-color="#90CBFF" stop-opacity="0.65"/>
+      <stop offset="100%" stop-color="#FFB8FF" stop-opacity="0.95"/>
+    </linearGradient>
+
+    <!-- Unclipped Full-Canvas Soft Drop Shadow for Floating Transparency -->
+    <filter id="floatingShadow" filterUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
+      <feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#030A22" flood-opacity="0.42"/>
+    </filter>
+
+    <!-- Negative-Space Mask for Phone Frame ONLY where the Front Orbit Band Crosses -->
+    <clipPath id="bottomOrbitClip">
+      <polygon points="0,530 1024,420 1024,1024 0,1024"/>
+    </clipPath>
+    <mask id="phoneCutoutMask" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024">
+      <rect width="1024" height="1024" fill="#FFFFFF"/>
+      <g clip-path="url(#bottomOrbitClip)">
+        <path d="M128 600
+                 C92 752 312 820 564 762
+                 C788 710 948 552 924 402
+                 C912 332 838 308 756 314
+                 C822 328 858 366 846 422
+                 C820 536 648 650 452 686
+                 C264 720 156 672 186 558
+                 C198 508 230 464 264 432
+                 C192 470 142 528 128 600 Z"
+              fill="#000000" stroke="#000000" stroke-width="26" stroke-linejoin="round"/>
+      </g>
+    </mask>
+  </defs>
+
+  <!-- SMARTPHONE BODY (Liquid Glass Interior + Frame + Negative-space cutout mask) -->
+  <g filter="url(#floatingShadow)">
+    <g mask="url(#phoneCutoutMask)">
+      <!-- Deep Sapphire Liquid Glass Interior -->
+      <rect x="272" y="156" width="480" height="684" rx="96" fill="url(#phoneInterior)"/>
+      <!-- Diagonal Liquid Glass Sheen -->
+      <path d="M368 156 H656 A96 96 0 0 1 752 252 V448 L272 620 V252 A96 96 0 0 1 368 156 Z"
+            fill="url(#glassSheen)"/>
+      <!-- Outer Liquid Glass Frame -->
+      <rect x="272" y="156" width="480" height="684" rx="96"
+            fill="none" stroke="url(#phoneBorder)" stroke-width="38"/>
+      <!-- Inner Specular Hairline Rim -->
+      <rect x="294" y="178" width="436" height="640" rx="76"
+            fill="none" stroke="#FFFFFF" stroke-opacity="0.32" stroke-width="2.5"/>
+      <!-- Top Speaker / Dynamic Capsule -->
+      <rect x="446" y="208" width="132" height="24" rx="12" fill="#FFFFFF"/>
+    </g>
+  </g>
+
+  <!-- CENTER OPTICAL CAMERA LENS (Positioned cleanly above the orbital swoosh) -->
+  <g filter="url(#floatingShadow)">
+    <!-- Outer White/Ice Glass Ring -->
+    <circle cx="512" cy="452" r="160" fill="#050C24" stroke="url(#lensOuterRing)" stroke-width="36"/>
+    <!-- Inner Bevel Rim -->
+    <circle cx="512" cy="452" r="140" fill="none" stroke="#FFFFFF" stroke-opacity="0.45" stroke-width="2.5"/>
+    <!-- Glowing Cyan-to-Violet Optical Iris -->
+    <circle cx="512" cy="452" r="102" fill="url(#lensIris)"/>
+    <!-- Top-Left Liquid Lens Caustic Arc -->
+    <path d="M432 415 A88 88 0 0 1 505 365"
+          fill="none" stroke="#5CF8FF" stroke-width="20" stroke-linecap="round" opacity="0.96"/>
+    <!-- Deep Aperture Pupil -->
+    <circle cx="512" cy="452" r="60" fill="url(#lensCore)"/>
+    <!-- Subtle Inner Aperture Ring -->
+    <circle cx="512" cy="452" r="60" fill="none" stroke="#3B82F6" stroke-opacity="0.35" stroke-width="2"/>
+    <!-- Crisp Specular Lens Glint -->
+    <circle cx="558" cy="408" r="19" fill="#FFFFFF" opacity="0.98"/>
+    <!-- Secondary Micro Glint -->
+    <circle cx="470" cy="496" r="7" fill="#68F2FF" opacity="0.75"/>
+  </g>
+
+  <!-- 3D ORBITAL SWOOSH (Razor-sharp crescent tips wrapping around the phone) -->
+  <g filter="url(#floatingShadow)">
+    <path d="M128 600
+             C92 752 312 820 564 762
+             C788 710 948 552 924 402
+             C912 332 838 308 756 314
+             C822 328 858 366 846 422
+             C820 536 648 650 452 686
+             C264 720 156 672 186 558
+             C198 508 230 464 264 432
+             C192 470 142 528 128 600 Z"
+          fill="url(#orbitGrad)"/>
+    <!-- Liquid Glass Specular Edge on Orbit -->
+    <path d="M186 558
+             C156 672 264 720 452 686
+             C648 650 820 536 846 422"
+          fill="none" stroke="url(#orbitRim)" stroke-width="4.5" stroke-linecap="round" opacity="0.9"/>
+  </g>
+</svg>

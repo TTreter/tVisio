@@ -1,0 +1,34 @@
+# Local & Temporary Files (Never pushed to GitHub)
+_local/
+/_local/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+.venv/
+env/
+*.egg-info/
+
+# Node / Electron / Frontend
+node_modules/
+dist/
+build/
+out/
+.vite/
+
+# Certificates & Local Runtime Keys
+*.pem
+*.key
+*.crt
+certs/
+
+# OS & Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.log
