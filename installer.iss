@@ -1,0 +1,69 @@
+; Script Inno Setup 6 para o Instalador Oficial do tVisio v2.0.0 (Windows x64)
+; ==============================================================================
+
+#define MyAppName "tVisio"
+#define MyAppVersion "2.0.0"
+#define MyAppPublisher "Tiago Treter (@TTreter)"
+#define MyAppURL "https://github.com/TTreter/tVisio"
+#define MyAppExeName "tVisio.exe"
+
+[Setup]
+; Informações Básicas do Aplicativo
+AppId={{5C2CD55C-92AD-4999-8666-912BD3E70000}
+AppName={#MyAppName}
+AppVersion={#MyAppVersion}
+AppVerName={#MyAppName} v{#MyAppVersion}
+AppPublisher={#MyAppPublisher}
+AppPublisherURL={#MyAppURL}
+AppSupportURL={#MyAppURL}/issues
+AppUpdatesURL={#MyAppURL}/releases
+VersionInfoVersion={#MyAppVersion}.0
+VersionInfoCompany={#MyAppPublisher}
+VersionInfoDescription=tVisio — Ultra-Low Latency Virtual Webcam
+VersionInfoCopyright=Copyright (C) 2026 Tiago Treter - GPLv3
+
+; Configuração de Instalação e Arquitetura x64
+DefaultDirName={autopf}\{#MyAppName}
+DefaultGroupName={#MyAppName}
+AllowNoIcons=yes
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
+PrivilegesRequired=lowest
+PrivilegesRequiredOverridesAllowed=commandline dialog
+
+; Estilo e Compressão Ultra
+SetupIconFile=assets\icon.ico
+UninstallDisplayIcon={app}\{#MyAppExeName},0
+Compression=lzma2/ultra64
+SolidCompression=yes
+WizardStyle=modern
+WizardResizable=no
+DisableWelcomePage=no
+
+; Saída do Instalador
+OutputDir=_local\dist
+OutputBaseFilename=tVisio-Setup-v2.0.0-x64
+
+[Languages]
+Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
+Name: "english"; MessagesFile: "compiler:Default.isl"
+
+[Tasks]
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+Name: "startup"; Description: "Iniciar automaticamente com o Windows"; GroupDescription: "Inicialização:"; Flags: unchecked
+
+[Files]
+Source: "target\release\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "assets\icon.ico"; DestDir: "{app}"; Flags: ignoreversion
+
+[Icons]
+Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\icon.ico"
+Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
+Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon; IconFilename: "{app}\icon.ico"
+Name: "{userstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--startup"; Tasks: startup; IconFilename: "{app}\icon.ico"
+
+[Run]
+Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+
+[UninstallDelete]
+Type: filesandordirs; Name: "{app}\_local"
