@@ -201,32 +201,41 @@ class TVisioServer:
     async def handle_install_vcam_driver(self, request: web.Request) -> web.Response:
         """
         One-Click Automatic Installer for the open-source UnityCapture DirectShow Virtual Camera filter.
-        Downloads to `_local/driver/` and registers `tVisio Virtual Camera` via regsvr32.
+        Downloads 64-bit and 32-bit DLLs to `_local/driver/` and registers `tVisio Virtual Camera` via regsvr32.
         """
         try:
             driver_dir = BASE_DIR / "_local" / "driver"
             driver_dir.mkdir(parents=True, exist_ok=True)
-            dll_path = driver_dir / "UnityCaptureFilter64.dll"
+            dll64_path = driver_dir / "UnityCaptureFilter64.dll"
+            dll32_path = driver_dir / "UnityCaptureFilter32.dll"
 
-            if not dll_path.exists():
-                zip_url = "https://github.com/schellingb/UnityCapture/releases/download/v1.0.4/UnityCapture_v1.0.4.zip"
-                zip_path = driver_dir / "UnityCapture.zip"
-                await asyncio.to_thread(urllib.request.urlretrieve, zip_url, zip_path)
-                with zipfile.ZipFile(zip_path, "r") as zf:
-                    for member in zf.namelist():
-                        if member.endswith("UnityCaptureFilter64.dll"):
-                            with zf.open(member) as src, open(dll_path, "wb") as dst:
-                                dst.write(src.read())
-                            break
+            base_raw_url = "https://raw.githubusercontent.com/schellingb/UnityCapture/master/Install"
+            if not dll64_path.exists():
+                await asyncio.to_thread(
+                    urllib.request.urlretrieve,
+                    f"{base_raw_url}/UnityCaptureFilter64.dll",
+                    dll64_path,
+                )
+            if not dll32_path.exists():
+                await asyncio.to_thread(
+                    urllib.request.urlretrieve,
+                    f"{base_raw_url}/UnityCaptureFilter32.dll",
+                    dll32_path,
+                )
 
             configure_tvisio_camera_name()
 
-            # Request UAC elevation for regsvr32 to register DirectShow filter
-            cmd = (
-                f'powershell -Command "Start-Process regsvr32.exe '
-                f"-ArgumentList '/s', '\"{dll_path}\"' -Verb RunAs -Wait\""
+            # Request UAC elevation for regsvr32 to register both 64-bit and 32-bit DirectShow filters
+            ps_script = (
+                f"Start-Process -FilePath 'regsvr32.exe' "
+                f"-ArgumentList '/s', '\"{dll64_path}\"', '\"{dll32_path}\"' "
+                f"-Verb RunAs -Wait"
             )
-            await asyncio.to_thread(subprocess.run, cmd, shell=True, check=False)
+            await asyncio.to_thread(
+                subprocess.run,
+                ["powershell", "-NoProfile", "-Command", ps_script],
+                check=False,
+            )
 
             configure_tvisio_camera_name()
             self.vcam._ensure_camera(1280, 720)
