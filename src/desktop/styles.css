@@ -1025,6 +1025,60 @@ svg.paused-svg-icon {
   transform: translateX(20px);
 }
 
+/* TAB 3: Ajustes do Sistema & Bandeja (Windows) */
+.settings-stack {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 100%;
+  gap: 10px;
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-group-title {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent-cyan);
+  margin-bottom: 2px;
+}
+
+.settings-row {
+  padding: 7px 11px;
+  border-radius: var(--radius-md);
+  background: rgba(3, 8, 22, 0.42);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.settings-actions-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.compact-action-btn {
+  padding: 8px 10px;
+  font-size: 0.74rem;
+}
+
+.danger-glass-btn {
+  border-color: rgba(239, 68, 68, 0.38);
+  background: rgba(239, 68, 68, 0.12);
+  color: #FCA5A5;
+}
+
+.danger-glass-btn:hover {
+  border-color: #EF4444;
+  background: rgba(239, 68, 68, 0.24);
+  color: #FFFFFF;
+}
+
 /* Compact PiP Mode */
 .app-shell.pip-mode .sidebar-column,
 .app-shell.pip-mode .vcam-status-bar,

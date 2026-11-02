@@ -218,6 +218,29 @@
       });
     }
 
+    // Sincroniza configurações de Sistema & Bandeja do Windows
+    if (data.app_settings) {
+      const s = data.app_settings;
+      const elStartWin = document.getElementById("chkStartWindows");
+      const elStartMin = document.getElementById("chkStartMinimized");
+      const elMinTray = document.getElementById("chkMinToTray");
+      const elCloseTray = document.getElementById("chkCloseToTray");
+      const elAutoEco = document.getElementById("chkAutoEco");
+      const elAutoVcam = document.getElementById("chkAutoStartVcam");
+
+      if (elStartWin) elStartWin.checked = !!s.start_with_windows;
+      if (elStartMin) elStartMin.checked = !!s.start_minimized;
+      if (elMinTray) elMinTray.checked = !!s.minimize_to_tray;
+      if (elCloseTray) elCloseTray.checked = !!s.close_to_tray;
+      if (elAutoEco) elAutoEco.checked = !!s.auto_eco_oled;
+      if (elAutoVcam) elAutoVcam.checked = !!s.auto_start_vcam;
+    }
+
+    const chkAntiPsmEl = document.getElementById("chkAntiPsm");
+    if (chkAntiPsmEl && data.anti_psm !== undefined) {
+      chkAntiPsmEl.checked = !!data.anti_psm;
+    }
+
     // Atualiza menu suspenso de lentes físicas se houver alteração
     if (data.cameras && JSON.stringify(data.cameras) !== JSON.stringify(currentCameras)) {
       currentCameras = data.cameras;
@@ -520,6 +543,95 @@
   // Seleção de Perfil de Resolução e Taxa de Quadros
   document.getElementById("resolutionSelect").addEventListener("change", (e) => {
     sendCommand({ action: "set_resolution", profile: e.target.value });
+  });
+
+  // --- Controles da Aba de Ajustes (Sistema & Bandeja do Windows) ---
+
+  // Botão de atalho de engrenagem no cabeçalho superior abre a aba Ajustes
+  const btnOpenSettings = document.getElementById("btnOpenSettings");
+  if (btnOpenSettings) {
+    btnOpenSettings.addEventListener("click", () => {
+      document.getElementById("appShell").classList.remove("pip-mode");
+      document.querySelectorAll("#sidebarTabs .tab-btn").forEach((b) => {
+        b.classList.toggle("active", b.dataset.tab === "tabSettings");
+      });
+      document.querySelectorAll(".tab-panel").forEach((p) => {
+        p.classList.toggle("active", p.id === "tabSettings");
+      });
+    });
+  }
+
+  document.getElementById("chkStartWindows").addEventListener("change", (e) => {
+    sendCommand({ action: "set_app_settings", start_with_windows: e.target.checked });
+  });
+
+  document.getElementById("chkStartMinimized").addEventListener("change", (e) => {
+    sendCommand({ action: "set_app_settings", start_minimized: e.target.checked });
+  });
+
+  document.getElementById("chkMinToTray").addEventListener("change", (e) => {
+    sendCommand({ action: "set_app_settings", minimize_to_tray: e.target.checked });
+  });
+
+  document.getElementById("chkCloseToTray").addEventListener("change", (e) => {
+    sendCommand({ action: "set_app_settings", close_to_tray: e.target.checked });
+  });
+
+  document.getElementById("chkAutoEco").addEventListener("change", (e) => {
+    sendCommand({ action: "set_app_settings", auto_eco_oled: e.target.checked });
+  });
+
+  document.getElementById("chkAutoStartVcam").addEventListener("change", (e) => {
+    sendCommand({ action: "set_app_settings", auto_start_vcam: e.target.checked });
+  });
+
+  // Ações de Segurança e Manutenção do Sistema
+  document.getElementById("btnFirewall").addEventListener("click", async () => {
+    const label = document.getElementById("btnFirewallText");
+    const prev = label.textContent;
+    label.textContent = "Configurando UAC...";
+    try {
+      const res = await fetch("/api/firewall", { method: "POST" });
+      const data = await res.json();
+      label.textContent = data.ok ? "Firewall Liberado!" : "Cancelado";
+    } catch (_) {
+      label.textContent = "Erro ao liberar";
+    }
+    setTimeout(() => {
+      label.textContent = prev;
+    }, 2200);
+  });
+
+  document.getElementById("btnRegenToken").addEventListener("click", async () => {
+    const label = document.getElementById("btnRegenTokenText");
+    const prev = label.textContent;
+    try {
+      const res = await fetch("/api/regenerate-token", { method: "POST" });
+      const data = await res.json();
+      if (data.ok) {
+        qrImage.src = `/api/qr?t=${Date.now()}`;
+        if (data.pairing_url) pairingUrlText.textContent = data.pairing_url;
+        label.textContent = "Token Renovado!";
+      }
+    } catch (_) {}
+    setTimeout(() => {
+      label.textContent = prev;
+    }, 2000);
+  });
+
+  document.getElementById("btnOpenDataDir").addEventListener("click", async () => {
+    try {
+      await fetch("/api/open-data-dir", { method: "POST" });
+    } catch (_) {}
+  });
+
+  document.getElementById("btnQuitApp").addEventListener("click", async () => {
+    try {
+      await fetch("/api/app/quit", { method: "POST" });
+    } catch (_) {}
+    setTimeout(() => {
+      window.close();
+    }, 150);
   });
 
   // Inicialização do WebSocket

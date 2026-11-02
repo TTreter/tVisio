@@ -87,6 +87,7 @@ Diferente de soluções convencionais pesadas e proprietárias (como DroidCam, E
 | **🧊 Freeze Frame (Congelar Imagem)** | Congela a imagem na câmera virtual instantaneamente para privacidade sem interromper a chamada. |
 | **💎 Interface Translucent Glass UI** | Interface translúcida com efeitos de vidro fosco, Lucide Icons e layout 100vh sem rolagem. |
 | **🔋 Monitor de Bateria Integrado** | Acompanha a porcentagem de bateria e status de carregamento do smartphone no painel do PC. |
+| **🖥️ Bandeja do Sistema & Inicialização** | Suporte nativo a *Iniciar com o Windows*, *Minimizar para a Bandeja* e execução em 2º plano com 0% de RAM de UI. |
 
 ---
 
@@ -138,6 +139,13 @@ A janela nativa desktop do **tVisio** abrirá automaticamente.
 ### Ativando a Câmera Virtual no Windows:
 - Na primeira execução, clique no botão **"Ativar Driver Virtual Cam"** no painel do tVisio. O aplicativo registrará o driver DirectShow automaticamente.
 - Abra o **OBS Studio, Discord, Zoom ou Google Meet**, selecione a câmera **"tVisio Virtual Camera"** (ou *"Unity Video Capture"*) nas configurações de vídeo.
+
+### Compilando o Executável Nativo (`tVisio.exe`):
+Para gerar o executável standalone sem janela de terminal (com suporte à Bandeja do Sistema e driver DirectShow embutido offline):
+```bash
+python build_exe.py
+```
+O executável de inicialização rápida será gerado em `dist/tVisio/tVisio.exe`. Para gerar um arquivo único portátil, utilize `python build_exe.py --onefile`.
 
 ---
 

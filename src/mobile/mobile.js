@@ -32,6 +32,7 @@
   let torchOn = false;
   let afLocked = false;
   let ecoMode = false;
+  let autoEcoEnabled = true;
   let autoEcoTimer = null;
   let shutterCapMs = 8.0;
 
@@ -72,9 +73,9 @@
    */
   function scheduleAutoEco() {
     if (autoEcoTimer) clearTimeout(autoEcoTimer);
-    if (!ecoMode) {
+    if (!ecoMode && autoEcoEnabled) {
       autoEcoTimer = setTimeout(() => {
-        if (webrtcConnected) {
+        if (webrtcConnected && autoEcoEnabled) {
           toggleEcoMode(true);
         }
       }, 8000);
@@ -424,6 +425,15 @@
         break;
       case "toggle_eco_mode":
         toggleEcoMode();
+        break;
+      case "set_auto_eco":
+        autoEcoEnabled = !!msg.enabled;
+        if (autoEcoEnabled) {
+          scheduleAutoEco();
+        } else {
+          if (autoEcoTimer) clearTimeout(autoEcoTimer);
+          if (ecoMode) toggleEcoMode(false);
+        }
         break;
       case "set_shutter_cap":
         shutterCapMs = parseFloat(msg.shutter_ms || 8.0);

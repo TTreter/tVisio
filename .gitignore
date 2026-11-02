@@ -19,6 +19,7 @@ dist/
 build/
 out/
 .vite/
+*.spec
 
 # Certificates & Local Runtime Keys
 *.pem

@@ -5,13 +5,14 @@ Serviços fornecidos:
 - Interface Desktop Translucent Glass e telemetria em tempo real via HTTP/WebSocket (Porta 8080)
 - Sinalização SDP WebRTC com priorização forçada de H.264 por hardware e extensão `playout-delay=0`
 - Pulso inteligente de Keep-Alive Anti-PSM para evitar micro-sleep do rádio Wi-Fi do smartphone
-- Gerenciamento de configurações persistentes e token de pareamento fixo em `_local/settings.json`
+- Gerenciamento de configurações persistentes, Bandeja do Sistema e integração com Windows
 """
 
 import asyncio
 import io
 import json
 import logging
+import shutil
 import ssl
 import struct
 import subprocess
@@ -34,21 +35,25 @@ except ImportError:
 
 from .cert_manager import ensure_ssl_certificates
 from .network_utils import discover_network_interfaces, tune_low_latency_socket
-from .settings_manager import SettingsManager
+from .settings_manager import SettingsManager, get_resource_dir, get_data_dir
 from .vcam_engine import VirtualCamEngine, configure_tvisio_camera_name
-
-# Configuração de logging estruturado do sistema
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+from .win_integration import (
+    set_start_with_windows,
+    register_firewall_rules,
+    open_local_data_folder,
+    DesktopWindowManager,
+    SystemTrayManager,
 )
+
 logger = logging.getLogger("tVisio.Server")
 
-# Diretórios base de arquivos estáticos e recursos
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-DESKTOP_DIR = BASE_DIR / "src" / "desktop"
-MOBILE_DIR = BASE_DIR / "src" / "mobile"
-ASSETS_DIR = BASE_DIR / "assets"
+# Diretórios de recursos estáticos (compatível com PyInstaller _MEIPASS) e dados graváveis (_local)
+RESOURCE_DIR = get_resource_dir()
+DATA_DIR = get_data_dir()
+DESKTOP_DIR = RESOURCE_DIR / "src" / "desktop"
+MOBILE_DIR = RESOURCE_DIR / "src" / "mobile"
+ASSETS_DIR = RESOURCE_DIR / "assets"
+BUNDLED_DRIVER_DIR = RESOURCE_DIR / "driver"
 
 
 def prioritize_h264_in_sdp(sdp: str) -> str:
@@ -87,17 +92,27 @@ def prioritize_h264_in_sdp(sdp: str) -> str:
 class TVisioServer:
     """
     Servidor assíncrono principal do tVisio baseado em aiohttp.
-    Gerencia a comunicação bidirecional com o app desktop e o cliente móvel.
+    Gerencia a comunicação bidirecional com o app desktop, bandeja do sistema e cliente móvel.
     """
 
     def __init__(self, http_port: int = 8080, https_port: int = 8443) -> None:
         self.http_port = http_port
         self.https_port = https_port
+        self.shutdown_event = asyncio.Event()
+        self.window_manager: Optional[DesktopWindowManager] = None
 
         # Carrega configurações salvas ou inicializa valores padrão com token fixo
-        self.settings = SettingsManager(BASE_DIR)
+        self.settings = SettingsManager(DATA_DIR)
         self.session_token = self.settings.data["session_token"]
         self.vcam = VirtualCamEngine(initial_settings=self.settings.data)
+
+        # Se o usuário ativou 'Iniciar com o Windows', garante que o caminho do executável atual esteja atualizado no Registro
+        if self.settings.data.get("start_with_windows", False):
+            set_start_with_windows(True)
+
+        # Inicializa a câmera virtual em standby se configurado
+        if self.settings.data.get("auto_start_vcam", True):
+            self.vcam._ensure_camera(1280, 720)
 
         # Descobre as interfaces de rede ativas (USB, Hotspot 1-Hop, Wi-Fi LAN)
         self.interfaces = discover_network_interfaces(self.https_port)
@@ -105,7 +120,7 @@ class TVisioServer:
             "ip": "127.0.0.1",
             "type": "usb",
             "label": "Localhost",
-            "url": f"https://127.0.0.1:{self.https_port}"
+            "url": f"https://127.0.0.1:{self.https_port}",
         }
 
         # Conjuntos de conexões WebSocket e instâncias WebRTC ativas
@@ -130,59 +145,90 @@ class TVisioServer:
         self.mobile_battery_level: Optional[int] = None
         self.mobile_battery_charging: bool = False
 
+    def request_shutdown(self) -> None:
+        """Solicita o encerramento gracioso de todos os serviços e fecha a janela gráfica."""
+        if self.window_manager is not None:
+            self.window_manager.close_window()
+        self.shutdown_event.set()
+
     def get_pairing_url(self, ip: Optional[str] = None) -> str:
         """Gera o link completo de pareamento contendo o IP e o token de sessão."""
         target_ip = ip or self.selected_interface["ip"]
         return f"https://{target_ip}:{self.https_port}/?t={self.session_token}"
 
+    def _build_telemetry_dict(self) -> Dict[str, Any]:
+        """Monta o dicionário completo de telemetria e configurações para sincronizar a UI."""
+        return {
+            "type": "telemetry",
+            "mobile_connected": self.mobile_connected,
+            "active_protocol": self.active_protocol,
+            "rtt_ms": round(self.rtt_ms, 1),
+            "g2g_ms": round(self.glass_to_glass_ms, 1),
+            "anti_psm": self.anti_psm_enabled,
+            "shutter_cap_ms": self.shutter_cap_ms,
+            "device_info": self.mobile_device_info,
+            "eco_mode": self.mobile_eco_mode,
+            "torch_on": self.mobile_torch_on,
+            "af_locked": self.mobile_af_locked,
+            "facing_mode": self.mobile_facing_mode,
+            "cameras": self.mobile_cameras,
+            "selected_cam_id": self.mobile_selected_cam_id,
+            "battery_level": self.mobile_battery_level,
+            "battery_charging": self.mobile_battery_charging,
+            "pairing_url": self.get_pairing_url(),
+            "interfaces": self.interfaces,
+            "selected_ip": self.selected_interface["ip"],
+            "vcam": self.vcam.get_status(),
+            "app_settings": {
+                "start_with_windows": bool(self.settings.data.get("start_with_windows", False)),
+                "start_minimized": bool(self.settings.data.get("start_minimized", False)),
+                "minimize_to_tray": bool(self.settings.data.get("minimize_to_tray", True)),
+                "close_to_tray": bool(self.settings.data.get("close_to_tray", True)),
+                "auto_eco_oled": bool(self.settings.data.get("auto_eco_oled", True)),
+                "auto_start_vcam": bool(self.settings.data.get("auto_start_vcam", True)),
+            },
+        }
+
     async def broadcast_telemetry(self) -> None:
-        """Transmite as métricas de telemetria a cada 250ms para as janelas Desktop conectadas."""
-        while True:
+        """Envia imediatamente um pacote de telemetria para todas as janelas Desktop conectadas."""
+        if not self.desktop_ws_clients:
+            return
+        payload = json.dumps(self._build_telemetry_dict())
+        dead = []
+        for ws in list(self.desktop_ws_clients):
             try:
-                if self.desktop_ws_clients:
-                    vcam_status = self.vcam.get_status()
-                    payload = json.dumps({
-                        "type": "telemetry",
-                        "mobile_connected": self.mobile_connected,
-                        "active_protocol": self.active_protocol,
-                        "rtt_ms": round(self.rtt_ms, 1),
-                        "g2g_ms": round(self.glass_to_glass_ms, 1),
-                        "anti_psm": self.anti_psm_enabled,
-                        "shutter_cap_ms": self.shutter_cap_ms,
-                        "device_info": self.mobile_device_info,
-                        "eco_mode": self.mobile_eco_mode,
-                        "torch_on": self.mobile_torch_on,
-                        "af_locked": self.mobile_af_locked,
-                        "facing_mode": self.mobile_facing_mode,
-                        "cameras": self.mobile_cameras,
-                        "selected_cam_id": self.mobile_selected_cam_id,
-                        "battery_level": self.mobile_battery_level,
-                        "battery_charging": self.mobile_battery_charging,
-                        "pairing_url": self.get_pairing_url(),
-                        "interfaces": self.interfaces,
-                        "selected_ip": self.selected_interface["ip"],
-                        "vcam": vcam_status,
-                    })
-                    dead = []
-                    for ws in list(self.desktop_ws_clients):
-                        try:
-                            await ws.send_str(payload)
-                        except Exception:
-                            dead.append(ws)
-                    for ws in dead:
-                        self.desktop_ws_clients.discard(ws)
+                await ws.send_str(payload)
+            except Exception:
+                dead.append(ws)
+        for ws in dead:
+            self.desktop_ws_clients.discard(ws)
+
+    async def telemetry_loop(self) -> None:
+        """Loop contínuo de telemetria a cada 250ms."""
+        while not self.shutdown_event.is_set():
+            try:
+                await self.broadcast_telemetry()
             except Exception as e:
                 logger.debug(f"Erro no envio de telemetria: {e}")
             await asyncio.sleep(0.25)
 
+    async def _send_mobile_command(self, cmd_dict: Dict[str, Any]) -> None:
+        """Envia um comando JSON para todos os smartphones conectados."""
+        msg = json.dumps({"type": "command", **cmd_dict})
+        for m_ws in list(self.mobile_ws_clients):
+            if not m_ws.closed:
+                try:
+                    await m_ws.send_str(msg)
+                except Exception:
+                    pass
+
     async def anti_psm_heartbeat_loop(self) -> None:
         """
         Gerador inteligente de micro-pulsos Anti-PSM.
-        Envia um pulso binário de 1 byte (0x01) para clientes conectados apenas em modo fallback WebSocket,
-        evitando micro-sleep de economia de energia no Wi-Fi sem sobreaquecer o chip em WebRTC.
+        Envia um pulso binário de 1 byte (0x01) para clientes conectados apenas em modo fallback WebSocket.
         """
         pulse_packet = b"\x01"
-        while True:
+        while not self.shutdown_event.is_set():
             if self.anti_psm_enabled and self.mobile_ws_clients and not self.pcs:
                 for ws in list(self.mobile_ws_clients):
                     if not ws.closed:
@@ -259,7 +305,7 @@ class TVisioServer:
 
     async def handle_cert_download(self, request: web.Request) -> web.Response:
         """Permite o download do certificado raiz local caso necessário em redes isoladas."""
-        cert_path = BASE_DIR / "_local" / "certs" / "tvisio_cert.pem"
+        cert_path = DATA_DIR / "_local" / "certs" / "tvisio_cert.pem"
         if cert_path.exists():
             return web.FileResponse(
                 cert_path,
@@ -269,14 +315,22 @@ class TVisioServer:
 
     async def handle_install_vcam_driver(self, request: web.Request) -> web.Response:
         """
-        Instalador automático em 1 clique para o filtro DirectShow UnityCapture (código aberto).
-        Baixa os binários de 64-bit e 32-bit para `_local/driver/` e registra no Windows via regsvr32.
+        Instalador automático em 1 clique para o filtro DirectShow UnityCapture.
+        Utiliza as DLLs embutidas no executável (offline) ou baixa para `_local/driver/` e registra via regsvr32.
         """
         try:
-            driver_dir = BASE_DIR / "_local" / "driver"
+            driver_dir = DATA_DIR / "_local" / "driver"
             driver_dir.mkdir(parents=True, exist_ok=True)
             dll64_path = driver_dir / "UnityCaptureFilter64.dll"
             dll32_path = driver_dir / "UnityCaptureFilter32.dll"
+
+            # Se estiver rodando a partir do executável com DLLs embutidas, copia offline primeiro
+            bundled64 = BUNDLED_DRIVER_DIR / "UnityCaptureFilter64.dll"
+            bundled32 = BUNDLED_DRIVER_DIR / "UnityCaptureFilter32.dll"
+            if not dll64_path.exists() and bundled64.exists():
+                shutil.copy2(bundled64, dll64_path)
+            if not dll32_path.exists() and bundled32.exists():
+                shutil.copy2(bundled32, dll32_path)
 
             base_raw_url = "https://raw.githubusercontent.com/schellingb/UnityCapture/master/Install"
             if not dll64_path.exists():
@@ -326,6 +380,37 @@ class TVisioServer:
             return web.json_response({"ok": True, "interfaces": self.interfaces})
         except Exception as e:
             return web.json_response({"ok": False, "error": str(e)}, status=500)
+
+    async def handle_window_show(self, request: web.Request) -> web.Response:
+        """Restaura ou abre a janela desktop (acionado pela Bandeja do Sistema ou segunda instância)."""
+        if self.window_manager is not None:
+            self.window_manager.show_or_launch()
+        return web.json_response({"ok": True})
+
+    async def handle_firewall_setup(self, request: web.Request) -> web.Response:
+        """Adiciona regras de entrada no Firewall do Windows via UAC."""
+        ok = await asyncio.to_thread(register_firewall_rules, self.http_port, self.https_port)
+        return web.json_response({"ok": ok})
+
+    async def handle_regenerate_token(self, request: web.Request) -> web.Response:
+        """Regera o token de segurança do QR Code e retorna a nova URL de pareamento."""
+        self.session_token = self.settings.regenerate_token()
+        await self.broadcast_telemetry()
+        return web.json_response({
+            "ok": True,
+            "session_token": self.session_token,
+            "pairing_url": self.get_pairing_url(),
+        })
+
+    async def handle_open_data_dir(self, request: web.Request) -> web.Response:
+        """Abre a pasta `_local` no Windows Explorer."""
+        ok = open_local_data_folder(DATA_DIR / "_local")
+        return web.json_response({"ok": ok})
+
+    async def handle_app_quit(self, request: web.Request) -> web.Response:
+        """Encerra completamente o servidor tVisio e remove o ícone da bandeja."""
+        asyncio.get_running_loop().call_later(0.15, self.request_shutdown)
+        return web.json_response({"ok": True})
 
     # -------------------------------------------------------------------------
     # Sinalização WebRTC e Consumo de Faixas de Vídeo
@@ -390,7 +475,7 @@ class TVisioServer:
         Garante que apenas o quadro mais recente seja processado, eliminando lag acumulado e vazamento de RAM.
         """
         try:
-            while True:
+            while not self.shutdown_event.is_set():
                 t_start = time.perf_counter()
                 frame = await track.recv()
 
@@ -450,6 +535,18 @@ class TVisioServer:
 
         logger.info("Transmissor móvel conectado via WebSocket")
 
+        # Sincroniza preferência de Auto-Eco OLED com o celular recém-conectado
+        try:
+            await ws.send_str(
+                json.dumps({
+                    "type": "command",
+                    "command": "set_auto_eco",
+                    "enabled": bool(self.settings.data.get("auto_eco_oled", True)),
+                })
+            )
+        except Exception:
+            pass
+
         try:
             async for msg in ws:
                 if msg.type == aiohttp.WSMsgType.BINARY:
@@ -506,10 +603,16 @@ class TVisioServer:
     # WebSocket: Interface Desktop e Miniplayer (/ws/desktop)
     # -------------------------------------------------------------------------
     async def handle_desktop_ws(self, request: web.Request) -> web.WebSocketResponse:
-        """Gerencia os comandos da interface desktop e a sincronização de controles de imagem/câmera."""
+        """Gerencia os comandos da interface desktop e a sincronização de controles de imagem/sistema."""
         ws = web.WebSocketResponse(max_msg_size=8 * 1024 * 1024)
         await ws.prepare(request)
         self.desktop_ws_clients.add(ws)
+
+        # Envia estado inicial imediatamente ao abrir a janela
+        try:
+            await ws.send_str(json.dumps(self._build_telemetry_dict()))
+        except Exception:
+            pass
 
         try:
             async for msg in ws:
@@ -569,6 +672,37 @@ class TVisioServer:
                             pan_y=self.vcam.pan_y,
                         )
 
+                    # Configurações do Aplicativo Desktop & Integração com Windows
+                    elif action == "set_app_settings":
+                        updates: Dict[str, Any] = {}
+                        for key in (
+                            "start_with_windows",
+                            "start_minimized",
+                            "minimize_to_tray",
+                            "close_to_tray",
+                            "auto_eco_oled",
+                            "auto_start_vcam",
+                        ):
+                            if key in cmd:
+                                updates[key] = bool(cmd[key])
+
+                        if "start_with_windows" in updates:
+                            set_start_with_windows(updates["start_with_windows"])
+
+                        if "auto_start_vcam" in updates and updates["auto_start_vcam"]:
+                            self.vcam._ensure_camera(1280, 720)
+
+                        if updates:
+                            self.settings.update(**updates)
+
+                        if "auto_eco_oled" in updates:
+                            await self._send_mobile_command({
+                                "command": "set_auto_eco",
+                                "enabled": updates["auto_eco_oled"],
+                            })
+
+                        await self.broadcast_telemetry()
+
                     # Controles de desempenho e rede
                     elif action == "set_miniplayer_enabled":
                         self.vcam.miniplayer_enabled = bool(cmd.get("enabled", True))
@@ -598,10 +732,7 @@ class TVisioServer:
                         if action == "set_shutter_cap":
                             self.shutter_cap_ms = float(cmd.get("shutter_ms", 8.0))
                             self.settings.update(shutter_cap_ms=self.shutter_cap_ms)
-                        forward_msg = json.dumps({"type": "command", "command": action, **cmd})
-                        for m_ws in list(self.mobile_ws_clients):
-                            if not m_ws.closed:
-                                await m_ws.send_str(forward_msg)
+                        await self._send_mobile_command({"command": action, **cmd})
         finally:
             self.desktop_ws_clients.discard(ws)
         return ws
@@ -616,6 +747,11 @@ class TVisioServer:
         app.router.add_get("/api/cert", self.handle_cert_download)
         app.router.add_post("/api/install-vcam", self.handle_install_vcam_driver)
         app.router.add_post("/api/hotspot", self.handle_hotspot_guide)
+        app.router.add_post("/api/window/show", self.handle_window_show)
+        app.router.add_post("/api/firewall", self.handle_firewall_setup)
+        app.router.add_post("/api/regenerate-token", self.handle_regenerate_token)
+        app.router.add_post("/api/open-data-dir", self.handle_open_data_dir)
+        app.router.add_post("/api/app/quit", self.handle_app_quit)
         app.router.add_post("/api/webrtc/offer", self.handle_webrtc_offer)
         app.router.add_get("/ws/stream", self.handle_mobile_ws)
         app.router.add_get("/ws/desktop", self.handle_desktop_ws)
@@ -627,14 +763,38 @@ class TVisioServer:
         return app
 
 
-async def run_servers(http_port: int = 8080, https_port: int = 8443) -> None:
-    """Inicia os servidores HTTP e HTTPS e executa as tarefas assíncronas em segundo plano."""
+async def run_servers(
+    http_port: int = 8080,
+    https_port: int = 8443,
+    start_minimized_override: bool = False,
+) -> None:
+    """
+    Inicia os servidores HTTP e HTTPS, configura a Bandeja do Sistema (System Tray),
+    abre a janela desktop (se não estiver em modo minimizado) e aguarda encerramento gracioso.
+    """
     tvisio = TVisioServer(http_port=http_port, https_port=https_port)
     app = tvisio.create_app()
 
+    # Configura o gerenciador de janela nativa e bandeja do sistema
+    desktop_url = f"http://127.0.0.1:{http_port}/desktop"
+    window_mgr = DesktopWindowManager(desktop_url=desktop_url, data_dir=DATA_DIR)
+    tvisio.window_manager = window_mgr
+
+    loop = asyncio.get_running_loop()
+    icon_path = ASSETS_DIR / "icon.ico"
+    if not icon_path.exists():
+        icon_path = ASSETS_DIR / "icon.png"
+    tray_mgr = SystemTrayManager(
+        server=tvisio,
+        window_mgr=window_mgr,
+        icon_path=icon_path,
+        loop=loop,
+    )
+    tray_mgr.start()
+
     # Gera e garante os certificados SSL cobrindo todos os IPs locais
     ip_list = [iface["ip"] for iface in tvisio.interfaces]
-    cert_path, key_path = ensure_ssl_certificates(ip_list, BASE_DIR)
+    cert_path, key_path = ensure_ssl_certificates(ip_list, DATA_DIR)
 
     ssl_ctx = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
     ssl_ctx.load_cert_chain(certfile=str(cert_path), keyfile=str(key_path))
@@ -650,14 +810,33 @@ async def run_servers(http_port: int = 8080, https_port: int = 8443) -> None:
     https_site = web.TCPSite(runner, "0.0.0.0", https_port, ssl_context=ssl_ctx)
     await https_site.start()
 
-    logger.info(f"Interface Desktop tVisio ativa em: http://127.0.0.1:{http_port}/desktop")
+    logger.info(f"Interface Desktop tVisio ativa em: {desktop_url}")
     logger.info(f"URL de pareamento para celular:    {tvisio.get_pairing_url()}")
 
-    # Inicializa loops em segundo plano
-    asyncio.create_task(tvisio.broadcast_telemetry())
-    asyncio.create_task(tvisio.anti_psm_heartbeat_loop())
+    # Abre a janela desktop apenas se não foi iniciado minimizado (--startup ou preferência do usuário)
+    should_start_minimized = start_minimized_override or bool(
+        tvisio.settings.data.get("start_minimized", False)
+    )
+    if not should_start_minimized:
+        loop.call_later(0.4, window_mgr.show_or_launch)
+    else:
+        logger.info("tVisio iniciado minimizado na Bandeja do Sistema.")
 
-    await asyncio.Event().wait()
+    # Inicializa loops em segundo plano
+    telemetry_task = asyncio.create_task(tvisio.telemetry_loop())
+    anti_psm_task = asyncio.create_task(tvisio.anti_psm_heartbeat_loop())
+    window_watch_task = asyncio.create_task(window_mgr.watch_window_lifecycle(tvisio))
+
+    # Aguarda sinal de encerramento (via botão Sair, Bandeja do Sistema ou Fechar Janela)
+    await tvisio.shutdown_event.wait()
+
+    logger.info("Encerrando servidores e liberando recursos do tVisio...")
+    telemetry_task.cancel()
+    anti_psm_task.cancel()
+    window_watch_task.cancel()
+    tray_mgr.stop()
+    tvisio.vcam.close()
+    await runner.cleanup()
 
 
 if __name__ == "__main__":
