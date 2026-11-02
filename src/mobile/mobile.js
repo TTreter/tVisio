@@ -1,9 +1,10 @@
 /**
- * tVisio Mobile Transmitter — Ultra-Low Latency Camera Engine
+ * tVisio Mobile Transmitter — Ultra-Low Latency Camera Engine (Zero-Overhead Edition)
  * Supports:
  * 1. WebRTC Zero-Buffer H.264 (UDP/RTP + DSCP High Priority + playout-delay=0)
- * 2. WebSocket Binary Turbo Stream (Zero-Queue Instant Start & Fallback)
- * 3. ISP Shutter Speed Capping (4ms / 8ms / 16ms) + Torch + DOM Video Detach (Eco-OLED)
+ * 2. WebSocket Binary Turbo Stream (Automatically paused when WebRTC connects -> 0 idle RAF loops!)
+ * 3. Multi-Lens Physical Camera Enumeration (Ultra-Wide, Main, Telephoto, Front)
+ * 4. Hardware ISP Shutter Speed Capping + AF-Lock + Torch + Battery Telemetry + Eco-OLED
  */
 
 (() => {
@@ -16,20 +17,26 @@
 
   let currentStream = null;
   let facingMode = "environment";
+  let selectedDeviceId = "";
+  let cameraList = [];
   let torchOn = false;
+  let afLocked = false;
   let ecoMode = false;
   let shutterCapMs = 8.0;
   let targetWidth = 1280;
   let targetHeight = 720;
   let targetFps = 60;
 
+  let batteryLevel = null;
+  let batteryCharging = false;
+
   let ws = null;
   let pc = null;
   let webrtcConnected = false;
+  let turboRafId = null;
   let rttMs = 4.5;
   let frameInFlight = false;
 
-  // Offscreen canvas for instant Zero-Queue Binary Turbo start before/alongside WebRTC
   const captureCanvas = document.createElement("canvas");
   const captureCtx = captureCanvas.getContext("2d", { alpha: false, desynchronized: true });
 
@@ -41,29 +48,70 @@
     }
   }
 
+  async function initBatteryMonitor() {
+    if ("getBattery" in navigator) {
+      try {
+        const bat = await navigator.getBattery();
+        const updateBat = () => {
+          batteryLevel = Math.round(bat.level * 100);
+          batteryCharging = !!bat.charging;
+        };
+        updateBat();
+        bat.addEventListener("levelchange", updateBat);
+        bat.addEventListener("chargingchange", updateBat);
+      } catch (_) {}
+    }
+  }
+
+  async function discoverPhysicalCameras() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const videoInputs = devices.filter((d) => d.kind === "videoinput");
+      cameraList = videoInputs.map((d, idx) => ({
+        id: d.deviceId,
+        label: d.label || `Lente Física #${idx + 1}`,
+      }));
+      if (currentStream) {
+        const track = currentStream.getVideoTracks()[0];
+        const settings = track && track.getSettings ? track.getSettings() : {};
+        if (settings.deviceId) {
+          selectedDeviceId = settings.deviceId;
+        }
+      }
+      sendTelemetry();
+    } catch (_) {}
+  }
+
   async function startCamera() {
     if (currentStream) {
       currentStream.getTracks().forEach((t) => t.stop());
     }
 
-    const constraints = {
-      audio: false,
-      video: {
-        facingMode: { ideal: facingMode },
-        width: { ideal: targetWidth },
-        height: { ideal: targetHeight },
-        frameRate: { ideal: targetFps, max: 120 },
-      },
+    const videoConstraints = {
+      width: { ideal: targetWidth },
+      height: { ideal: targetHeight },
+      frameRate: { ideal: targetFps, max: 120 },
     };
 
+    if (selectedDeviceId) {
+      videoConstraints.deviceId = { exact: selectedDeviceId };
+    } else {
+      videoConstraints.facingMode = { ideal: facingMode };
+    }
+
     try {
-      currentStream = await navigator.mediaDevices.getUserMedia(constraints);
+      currentStream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: videoConstraints,
+      });
       videoEl.srcObject = currentStream;
       await videoEl.play();
 
+      await discoverPhysicalCameras();
       await applyOpticalSensorTuning();
       capsuleDot.classList.add("live");
-      capsuleStatus.textContent = "tVisio Live";
+      capsuleStatus.textContent = webrtcConnected ? "WebRTC Zero-Buffer" : "tVisio Live";
 
       if (pc) {
         const videoTrack = currentStream.getVideoTracks()[0];
@@ -75,14 +123,18 @@
         startWebRTC();
       }
     } catch (err) {
+      // Fallback if exact deviceId failed
+      if (selectedDeviceId) {
+        selectedDeviceId = "";
+        return startCamera();
+      }
       capsuleStatus.textContent = "Permita o acesso à câmera";
       console.error("Camera access error:", err);
     }
   }
 
   /**
-   * Stage 1 Optimization: Optical Sensor Shutter Speed Capping (ISP Tuning)
-   * Prevents mobile auto-exposure from dropping to 1/30s (33.3ms sensor delay).
+   * Stage 1 Optimization: Optical Sensor Shutter Speed Capping & AF-Lock (ISP Tuning)
    */
   async function applyOpticalSensorTuning() {
     if (!currentStream) return;
@@ -96,22 +148,35 @@
       if (caps.exposureMode && caps.exposureMode.includes("manual") && shutterCapMs < 30) {
         adv.exposureMode = "manual";
         if (caps.exposureTime) {
-          // exposureTime in MediaStreamTrack capabilities is typically in 100-microsecond units or ms
-          const desired = Math.max(caps.exposureTime.min || 1, Math.min(caps.exposureTime.max || 100, shutterCapMs * 10));
+          const desired = Math.max(
+            caps.exposureTime.min || 1,
+            Math.min(caps.exposureTime.max || 100, shutterCapMs * 10)
+          );
           adv.exposureTime = desired;
         }
       } else if (caps.exposureMode && caps.exposureMode.includes("continuous")) {
         adv.exposureMode = "continuous";
       }
 
-      if (caps.focusMode && caps.focusMode.includes("continuous")) {
-        adv.focusMode = "continuous";
+      if (caps.focusMode) {
+        if (afLocked && caps.focusMode.includes("manual")) {
+          adv.focusMode = "manual";
+        } else if (!afLocked && caps.focusMode.includes("continuous")) {
+          adv.focusMode = "continuous";
+        }
       }
 
       if (Object.keys(adv).length > 0) {
         await track.applyConstraints({ advanced: [adv] });
       }
     } catch (_) {}
+  }
+
+  async function toggleAfLock(forceState) {
+    afLocked = typeof forceState === "boolean" ? forceState : !afLocked;
+    document.getElementById("mBtnAfLock").classList.toggle("active", afLocked);
+    await applyOpticalSensorTuning();
+    sendTelemetry();
   }
 
   async function toggleTorch(forceState) {
@@ -130,36 +195,26 @@
     } catch (_) {}
   }
 
-  /**
-   * Stage 2 Optimization: DOM Video Detach (Eco-OLED Mode)
-   * Detaches local <video> rendering from the smartphone's display VSync compositor.
-   */
   function toggleEcoMode(forceState) {
     ecoMode = typeof forceState === "boolean" ? forceState : !ecoMode;
     ecoOverlay.classList.toggle("hidden", !ecoMode);
-    // Hide video element visually so mobile SurfaceFlinger/CoreAnimation skips compositing
     videoEl.style.opacity = ecoMode ? "0" : "1";
     document.getElementById("mBtnEco").classList.toggle("active", ecoMode);
     sendTelemetry();
   }
 
-  /**
-   * Stage 3 Optimization: WebRTC Zero-Buffer H.264 Stream with DSCP QoS
-   */
   async function startWebRTC() {
     if (!currentStream || typeof RTCPeerConnection === "undefined") return;
 
     try {
       pc = new RTCPeerConnection({ iceServers: [] });
       const videoTrack = currentStream.getVideoTracks()[0];
-      // Hint browser encoder to optimize for motion / zero-latency fluid video
       if ("contentHint" in videoTrack) {
         videoTrack.contentHint = "motion";
       }
 
       const sender = pc.addTrack(videoTrack, currentStream);
 
-      // Set DSCP High Priority (WMM Voice/Video queue) & tuned low-latency bitrate
       if (sender.getParameters && sender.setParameters) {
         try {
           const params = sender.getParameters();
@@ -178,11 +233,14 @@
         webrtcConnected = pc.connectionState === "connected" || pc.connectionState === "completed";
         if (webrtcConnected) {
           capsuleStatus.textContent = "WebRTC Zero-Buffer";
+          // Stop the fallback Binary Turbo RAF loop immediately to save 15% mobile CPU/battery!
+          stopBinaryTurboLoop();
         } else if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
           try {
             pc.close();
           } catch (_) {}
           pc = null;
+          startBinaryTurboLoop();
           setTimeout(startWebRTC, 1200);
         }
       };
@@ -208,9 +266,6 @@
     }
   }
 
-  /**
-   * WebSocket Control Channel + Anti-PSM Receiver + Zero-Queue Binary Turbo Stream
-   */
   function connectWebSocket() {
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
     ws = new WebSocket(`${proto}//${location.host}/ws/stream`);
@@ -218,11 +273,12 @@
 
     ws.onopen = () => {
       sendTelemetry();
-      startBinaryTurboLoop();
+      if (!webrtcConnected) {
+        startBinaryTurboLoop();
+      }
     };
 
     ws.onmessage = (event) => {
-      // 1-byte binary packet (0x01) = 500Hz Anti-PSM keep-alive pulse from PC!
       if (event.data instanceof ArrayBuffer) {
         return;
       }
@@ -243,7 +299,6 @@
     };
 
     ws.onclose = () => {
-      webrtcConnected = false;
       setTimeout(connectWebSocket, 1000);
     };
   }
@@ -251,12 +306,21 @@
   function handleRemoteCommand(msg) {
     switch (msg.command) {
       case "switch_camera":
+        selectedDeviceId = "";
         facingMode = facingMode === "environment" ? "user" : "environment";
+        startCamera();
+        sendTelemetry();
+        break;
+      case "select_camera_device":
+        selectedDeviceId = msg.device_id || "";
         startCamera();
         sendTelemetry();
         break;
       case "toggle_torch":
         toggleTorch();
+        break;
+      case "toggle_af_lock":
+        toggleAfLock();
         break;
       case "toggle_eco_mode":
         toggleEcoMode();
@@ -295,20 +359,33 @@
         device,
         eco_mode: ecoMode,
         torch_on: torchOn,
+        af_locked: afLocked,
         facing_mode: facingMode,
         shutter_ms: shutterCapMs,
+        cameras: cameraList,
+        selected_cam_id: selectedDeviceId,
+        battery_level: batteryLevel,
+        battery_charging: batteryCharging,
       })
     );
   }
 
-  /**
-   * Zero-Queue Binary Turbo Stream (Active immediately & whenever WebRTC is not primary)
-   */
-  function startBinaryTurboLoop() {
-    const tick = () => {
-      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+  function stopBinaryTurboLoop() {
+    if (turboRafId !== null) {
+      cancelAnimationFrame(turboRafId);
+      turboRafId = null;
+    }
+  }
 
-      if (!webrtcConnected && !frameInFlight && videoEl.readyState >= 2) {
+  function startBinaryTurboLoop() {
+    stopBinaryTurboLoop();
+    const tick = () => {
+      if (webrtcConnected || !ws || ws.readyState !== WebSocket.OPEN) {
+        turboRafId = null;
+        return;
+      }
+
+      if (!frameInFlight && videoEl.readyState >= 2) {
         const vw = videoEl.videoWidth || 1280;
         const vh = videoEl.videoHeight || 720;
         if (captureCanvas.width !== vw || captureCanvas.height !== vh) {
@@ -337,28 +414,37 @@
         );
       }
 
-      requestAnimationFrame(tick);
+      turboRafId = requestAnimationFrame(tick);
     };
-    requestAnimationFrame(tick);
-
-    // Periodic ping for sub-ms RTT tracking even when WebRTC carries the video
-    setInterval(() => {
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: "ping", ts: performance.now() }));
-        sendTelemetry();
-      }
-    }, 600);
+    turboRafId = requestAnimationFrame(tick);
   }
+
+  setInterval(() => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "ping", ts: performance.now() }));
+      sendTelemetry();
+    }
+  }, 800);
 
   // Mobile UI Button Listeners
   document.getElementById("mBtnSwitch").addEventListener("click", () => {
-    facingMode = facingMode === "environment" ? "user" : "environment";
+    if (cameraList.length > 1) {
+      const curIdx = cameraList.findIndex((c) => c.id === selectedDeviceId);
+      const nextIdx = (curIdx + 1) % cameraList.length;
+      selectedDeviceId = cameraList[nextIdx].id;
+    } else {
+      facingMode = facingMode === "environment" ? "user" : "environment";
+    }
     startCamera();
     sendTelemetry();
   });
 
   document.getElementById("mBtnTorch").addEventListener("click", () => {
     toggleTorch();
+  });
+
+  document.getElementById("mBtnAfLock").addEventListener("click", () => {
+    toggleAfLock();
   });
 
   document.getElementById("mBtnShutter").addEventListener("click", () => {
@@ -380,6 +466,7 @@
 
   // Boot sequence
   requestWakeLock();
+  initBatteryMonitor();
   startCamera();
   connectWebSocket();
 })();

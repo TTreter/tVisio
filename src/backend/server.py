@@ -1,26 +1,24 @@
 """
-tVisio — Ultra-Low Latency Core Server (WebRTC + Binary WS + Anti-PSM 500Hz + Virtual Cam)
+tVisio — Ultra-Low Latency Core Server (WebRTC + Binary WS + Anti-PSM + L1-LUT Color Studio)
 Serves:
 - Mobile Transmitter WebApp over HTTPS (Port 8443) & HTTP (Port 8080 for USB localhost)
 - Desktop Liquid Glass App UI & Telemetry over HTTP/WS (Port 8080)
-- WebRTC SDP Signaling with `playout-delay=0` & H.264 Constrained Baseline prioritization
-- Anti-PSM 500Hz Wi-Fi Keep-Alive pulse to prevent mobile radio micro-sleep
+- WebRTC SDP Signaling with H.264 Hardware Prioritization & `playout-delay=0`
+- Anti-PSM 100Hz Wi-Fi Keep-Alive pulse to prevent mobile radio micro-sleep
+- Persistent settings & fixed pairing token in `_local/settings.json`
 """
 
 import asyncio
 import io
 import json
 import logging
-import secrets
 import ssl
 import struct
 import subprocess
-import sys
 import time
 import urllib.request
-import zipfile
 from pathlib import Path
-from typing import Set, Optional, Dict, Any
+from typing import Set, Optional, Dict, Any, List
 
 import aiohttp
 from aiohttp import web
@@ -36,6 +34,7 @@ except ImportError:
 
 from .cert_manager import ensure_ssl_certificates
 from .network_utils import discover_network_interfaces, tune_low_latency_socket
+from .settings_manager import SettingsManager
 from .vcam_engine import VirtualCamEngine, configure_tvisio_camera_name
 
 logging.basicConfig(
@@ -50,12 +49,41 @@ MOBILE_DIR = BASE_DIR / "src" / "mobile"
 ASSETS_DIR = BASE_DIR / "assets"
 
 
+def prioritize_h264_in_sdp(sdp: str) -> str:
+    """
+    Reorders payload types on the `m=video` line so H264 hardware payloads appear
+    before VP8/VP9, and injects the `playout-delay=0` zero-buffer RTP extension.
+    """
+    lines = sdp.splitlines()
+    h264_pts: List[str] = []
+    for line in lines:
+        if line.startswith("a=rtpmap:") and "H264/90000" in line.upper():
+            pt = line.split(":")[1].split(" ")[0]
+            h264_pts.append(pt)
+
+    out_lines: List[str] = []
+    for line in lines:
+        if line.startswith("m=video ") and h264_pts:
+            parts = line.split(" ")
+            if len(parts) > 3:
+                header = parts[:3]
+                pts = parts[3:]
+                prioritized = [p for p in pts if p in h264_pts] + [p for p in pts if p not in h264_pts]
+                line = " ".join(header + prioritized)
+            out_lines.append(line)
+            out_lines.append("a=extmap:14 http://www.webrtc.org/experiments/rtp-hdrext/playout-delay")
+        else:
+            out_lines.append(line)
+    return "\r\n".join(out_lines) + "\r\n"
+
+
 class TVisioServer:
     def __init__(self, http_port: int = 8080, https_port: int = 8443) -> None:
         self.http_port = http_port
         self.https_port = https_port
-        self.session_token = secrets.token_urlsafe(8)
-        self.vcam = VirtualCamEngine()
+        self.settings = SettingsManager(BASE_DIR)
+        self.session_token = self.settings.data["session_token"]
+        self.vcam = VirtualCamEngine(initial_settings=self.settings.data)
 
         self.interfaces = discover_network_interfaces(self.https_port)
         self.selected_interface = self.interfaces[0] if self.interfaces else {
@@ -73,14 +101,19 @@ class TVisioServer:
         # Live Telemetry State
         self.mobile_connected: bool = False
         self.active_protocol: str = "Standby"
-        self.anti_psm_enabled: bool = True
-        self.shutter_cap_ms: float = 8.0
+        self.anti_psm_enabled: bool = bool(self.settings.data.get("anti_psm_enabled", True))
+        self.shutter_cap_ms: float = float(self.settings.data.get("shutter_cap_ms", 8.0))
         self.rtt_ms: float = 0.0
         self.glass_to_glass_ms: float = 0.0
         self.mobile_device_info: str = "Nenhum dispositivo conectado"
         self.mobile_eco_mode: bool = False
         self.mobile_torch_on: bool = False
+        self.mobile_af_locked: bool = False
         self.mobile_facing_mode: str = "environment"
+        self.mobile_cameras: List[Dict[str, str]] = []
+        self.mobile_selected_cam_id: str = ""
+        self.mobile_battery_level: Optional[int] = None
+        self.mobile_battery_charging: bool = False
 
     def get_pairing_url(self, ip: Optional[str] = None) -> str:
         target_ip = ip or self.selected_interface["ip"]
@@ -103,7 +136,12 @@ class TVisioServer:
                         "device_info": self.mobile_device_info,
                         "eco_mode": self.mobile_eco_mode,
                         "torch_on": self.mobile_torch_on,
+                        "af_locked": self.mobile_af_locked,
                         "facing_mode": self.mobile_facing_mode,
+                        "cameras": self.mobile_cameras,
+                        "selected_cam_id": self.mobile_selected_cam_id,
+                        "battery_level": self.mobile_battery_level,
+                        "battery_charging": self.mobile_battery_charging,
                         "pairing_url": self.get_pairing_url(),
                         "interfaces": self.interfaces,
                         "selected_ip": self.selected_interface["ip"],
@@ -155,14 +193,24 @@ class TVisioServer:
     # HTTP Routes
     # -------------------------------------------------------------------------
     async def handle_mobile_index(self, request: web.Request) -> web.Response:
-        # If accessed over plain HTTP on a non-localhost LAN IP, redirect immediately to HTTPS
-        # so mobile browsers (Safari/Chrome) unlock navigator.mediaDevices.getUserMedia()!
         host_header = request.headers.get("Host", "")
         hostname = host_header.split(":")[0] if host_header else ""
         if not request.secure and hostname not in ("localhost", "127.0.0.1"):
             https_url = f"https://{hostname}:{self.https_port}{request.rel_url}"
             raise web.HTTPFound(location=https_url)
         return web.FileResponse(MOBILE_DIR / "index.html")
+
+    async def handle_manifest_json(self, request: web.Request) -> web.Response:
+        manifest = {
+            "name": "tVisio Camera Transmitter",
+            "short_name": "tVisio",
+            "start_url": f"/?t={self.session_token}",
+            "display": "standalone",
+            "background_color": "#000000",
+            "theme_color": "#04091A",
+            "icons": [{"src": "/assets/icon.png", "sizes": "1024x1024", "type": "image/png"}],
+        }
+        return web.json_response(manifest)
 
     async def handle_desktop_index(self, request: web.Request) -> web.Response:
         return web.FileResponse(DESKTOP_DIR / "index.html")
@@ -225,7 +273,6 @@ class TVisioServer:
 
             configure_tvisio_camera_name()
 
-            # Request UAC elevation for regsvr32 to register both 64-bit and 32-bit DirectShow filters
             ps_script = (
                 f"Start-Process -FilePath 'regsvr32.exe' "
                 f"-ArgumentList '/s', '\"{dll64_path}\"', '\"{dll32_path}\"' "
@@ -252,7 +299,6 @@ class TVisioServer:
         """Opens Windows Mobile Hotspot settings directly for 1-Hop Direct Wi-Fi."""
         try:
             subprocess.Popen(["cmd", "/c", "start", "ms-settings:network-mobilehotspot"], shell=True)
-            # Re-scan interfaces after 2 seconds
             await asyncio.sleep(1.5)
             self.interfaces = discover_network_interfaces(self.https_port)
             return web.json_response({"ok": True, "interfaces": self.interfaces})
@@ -267,7 +313,9 @@ class TVisioServer:
             return web.json_response({"error": "aiortc not available"}, status=501)
 
         params = await request.json()
-        offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
+        # Reorder incoming SDP offer so H264 hardware codec is prioritized over VP8
+        prioritized_offer_sdp = prioritize_h264_in_sdp(params["sdp"])
+        offer = RTCSessionDescription(sdp=prioritized_offer_sdp, type=params["type"])
 
         # Close any stale PeerConnections to free FFmpeg decoder memory immediately
         for old_pc in list(self.pcs):
@@ -285,7 +333,7 @@ class TVisioServer:
             logger.info(f"WebRTC state: {pc.connectionState}")
             if pc.connectionState in ("connected", "completed"):
                 self.mobile_connected = True
-                self.active_protocol = "WebRTC Zero-Buffer (UDP/RTP)"
+                self.active_protocol = "WebRTC Zero-Buffer (H.264 UDP)"
             elif pc.connectionState in ("failed", "closed", "disconnected"):
                 self.pcs.discard(pc)
                 try:
@@ -306,15 +354,7 @@ class TVisioServer:
 
         await pc.setRemoteDescription(offer)
         answer = await pc.createAnswer()
-
-        # Inject playout-delay=0 extension into SDP answer if present
-        sdp_lines = answer.sdp.splitlines()
-        patched_sdp = []
-        for line in sdp_lines:
-            patched_sdp.append(line)
-            if line.startswith("m=video"):
-                patched_sdp.append("a=extmap:14 http://www.webrtc.org/experiments/rtp-hdrext/playout-delay")
-        final_sdp = "\r\n".join(patched_sdp) + "\r\n"
+        final_sdp = prioritize_h264_in_sdp(answer.sdp)
 
         await pc.setLocalDescription(RTCSessionDescription(sdp=final_sdp, type=answer.type))
         return web.json_response({
@@ -333,7 +373,6 @@ class TVisioServer:
                 t_start = time.perf_counter()
                 frame = await track.recv()
 
-                # Drain any backlog in aiortc's internal queue to prevent [Errno 12] ENOMEM and lag
                 q = getattr(track, "_queue", None)
                 if q is not None:
                     while not q.empty():
@@ -343,6 +382,12 @@ class TVisioServer:
                             frame = newer
                         except Exception:
                             break
+
+                if self.vcam.frozen:
+                    del frame
+                    self.vcam.process_and_push_bgr(np.empty((1, 1, 3), dtype=np.uint8))
+                    await asyncio.sleep(0.016)
+                    continue
 
                 bgr = frame.to_ndarray(format="bgr24")
                 del frame
@@ -355,7 +400,6 @@ class TVisioServer:
 
                 decode_elapsed = (time.perf_counter() - t_start) * 1000.0
                 self.glass_to_glass_ms = max(8.5, (self.rtt_ms * 0.5) + 6.5 + min(decode_elapsed, 6.0))
-                # Yield briefly to event loop so socket/ICE tasks run smoothly
                 await asyncio.sleep(0)
         except Exception as e:
             logger.info(f"WebRTC track ended: {e}")
@@ -367,7 +411,6 @@ class TVisioServer:
         ws = web.WebSocketResponse(max_msg_size=16 * 1024 * 1024, heartbeat=15.0)
         await ws.prepare(request)
 
-        # Tune raw OS socket for TCP_NODELAY and DSCP EF (46)
         transport = request.transport
         if transport is not None:
             raw_sock = transport.get_extra_info("socket")
@@ -385,14 +428,11 @@ class TVisioServer:
             async for msg in ws:
                 if msg.type == aiohttp.WSMsgType.BINARY:
                     data = msg.data
-                    # Binary frame header: first 8 bytes = float64 client timestamp (ms)
                     if len(data) > 8:
                         client_ts = struct.unpack("<d", data[:8])[0]
                         jpeg_bytes = data[8:]
-                        # Send immediate ack for RTT calculation
                         await ws.send_str(json.dumps({"type": "ack", "ts": client_ts}))
 
-                        # Decode frame in memory using fast C++ OpenCV decoder
                         t0 = time.perf_counter()
                         buf_arr = np.frombuffer(jpeg_bytes, dtype=np.uint8)
                         bgr_arr = cv2.imdecode(buf_arr, cv2.IMREAD_COLOR)
@@ -416,8 +456,16 @@ class TVisioServer:
                         self.mobile_device_info = info.get("device", self.mobile_device_info)
                         self.mobile_eco_mode = bool(info.get("eco_mode", self.mobile_eco_mode))
                         self.mobile_torch_on = bool(info.get("torch_on", self.mobile_torch_on))
+                        self.mobile_af_locked = bool(info.get("af_locked", self.mobile_af_locked))
                         self.mobile_facing_mode = info.get("facing_mode", self.mobile_facing_mode)
                         self.shutter_cap_ms = float(info.get("shutter_ms", self.shutter_cap_ms))
+                        if "cameras" in info and isinstance(info["cameras"], list):
+                            self.mobile_cameras = info["cameras"]
+                        if "selected_cam_id" in info:
+                            self.mobile_selected_cam_id = str(info["selected_cam_id"] or "")
+                        if "battery_level" in info and info["battery_level"] is not None:
+                            self.mobile_battery_level = int(info["battery_level"])
+                            self.mobile_battery_charging = bool(info.get("battery_charging", False))
         except Exception as e:
             logger.debug(f"Mobile WS disconnected: {e}")
         finally:
@@ -441,19 +489,58 @@ class TVisioServer:
                     cmd = json.loads(msg.data)
                     action = cmd.get("action")
 
-                    # PC-side zero-cost image transforms & miniplayer toggle
+                    # PC-side zero-cost image transforms, L1-LUT Color Studio & ePTZ
                     if action == "toggle_mirror_h":
                         self.vcam.mirror_horizontal = not self.vcam.mirror_horizontal
+                        self.settings.update(mirror_horizontal=self.vcam.mirror_horizontal)
                     elif action == "toggle_mirror_v":
                         self.vcam.mirror_vertical = not self.vcam.mirror_vertical
+                        self.settings.update(mirror_vertical=self.vcam.mirror_vertical)
                     elif action == "rotate":
                         self.vcam.rotation = (self.vcam.rotation + 90) % 360
+                        self.settings.update(rotation=self.vcam.rotation)
+                    elif action == "toggle_freeze":
+                        self.vcam.frozen = not self.vcam.frozen
                     elif action == "set_brightness":
                         self.vcam.brightness_gain = float(cmd.get("value", 1.0))
+                        self.vcam.rebuild_color_lut()
+                        self.settings.update(brightness_gain=self.vcam.brightness_gain)
+                    elif action == "set_color_studio":
+                        if "brightness_gain" in cmd:
+                            self.vcam.brightness_gain = float(cmd["brightness_gain"])
+                        if "contrast" in cmd:
+                            self.vcam.contrast = float(cmd["contrast"])
+                        if "gamma" in cmd:
+                            self.vcam.gamma = float(cmd["gamma"])
+                        if "color_temp" in cmd:
+                            self.vcam.color_temp = float(cmd["color_temp"])
+                        if "color_preset" in cmd:
+                            self.vcam.color_preset = str(cmd["color_preset"])
+                        self.vcam.rebuild_color_lut()
+                        self.settings.update(
+                            brightness_gain=self.vcam.brightness_gain,
+                            contrast=self.vcam.contrast,
+                            gamma=self.vcam.gamma,
+                            color_temp=self.vcam.color_temp,
+                            color_preset=self.vcam.color_preset,
+                        )
+                    elif action == "set_eptz":
+                        if "zoom_level" in cmd:
+                            self.vcam.zoom_level = max(1.0, min(3.0, float(cmd["zoom_level"])))
+                        if "pan_x" in cmd:
+                            self.vcam.pan_x = max(-1.0, min(1.0, float(cmd["pan_x"])))
+                        if "pan_y" in cmd:
+                            self.vcam.pan_y = max(-1.0, min(1.0, float(cmd["pan_y"])))
+                        self.settings.update(
+                            zoom_level=self.vcam.zoom_level,
+                            pan_x=self.vcam.pan_x,
+                            pan_y=self.vcam.pan_y,
+                        )
                     elif action == "set_miniplayer_enabled":
                         self.vcam.miniplayer_enabled = bool(cmd.get("enabled", True))
                     elif action == "toggle_anti_psm":
                         self.anti_psm_enabled = not self.anti_psm_enabled
+                        self.settings.update(anti_psm_enabled=self.anti_psm_enabled)
                     elif action == "select_interface":
                         ip = cmd.get("ip")
                         for iface in self.interfaces:
@@ -463,10 +550,12 @@ class TVisioServer:
                     elif action == "refresh_interfaces":
                         self.interfaces = discover_network_interfaces(self.https_port)
 
-                    # Remote Mobile Camera Commands (forwarded instantly to smartphone)
+                    # Remote Mobile ISP Hardware Camera Commands (forwarded instantly to smartphone)
                     elif action in (
                         "switch_camera",
+                        "select_camera_device",
                         "toggle_torch",
+                        "toggle_af_lock",
                         "toggle_eco_mode",
                         "set_shutter_cap",
                         "set_protocol",
@@ -474,6 +563,7 @@ class TVisioServer:
                     ):
                         if action == "set_shutter_cap":
                             self.shutter_cap_ms = float(cmd.get("shutter_ms", 8.0))
+                            self.settings.update(shutter_cap_ms=self.shutter_cap_ms)
                         forward_msg = json.dumps({"type": "command", "command": action, **cmd})
                         for m_ws in list(self.mobile_ws_clients):
                             if not m_ws.closed:
@@ -485,6 +575,7 @@ class TVisioServer:
     def create_app(self) -> web.Application:
         app = web.Application()
         app.router.add_get("/", self.handle_mobile_index)
+        app.router.add_get("/manifest.json", self.handle_manifest_json)
         app.router.add_get("/desktop", self.handle_desktop_index)
         app.router.add_get("/api/qr", self.handle_qr_svg)
         app.router.add_get("/api/cert", self.handle_cert_download)
@@ -513,22 +604,18 @@ async def run_servers(http_port: int = 8080, https_port: int = 8443) -> None:
     runner = web.AppRunner(app, access_log=None)
     await runner.setup()
 
-    # 1. Start HTTP Server (for Desktop UI & USB Localhost)
     http_site = web.TCPSite(runner, "0.0.0.0", http_port)
     await http_site.start()
 
-    # 2. Start HTTPS Server (for Mobile Safari/Chrome Camera Access)
     https_site = web.TCPSite(runner, "0.0.0.0", https_port, ssl_context=ssl_ctx)
     await https_site.start()
 
     logger.info(f"tVisio Desktop UI active at: http://127.0.0.1:{http_port}/desktop")
     logger.info(f"tVisio Mobile Pairing URL:   {tvisio.get_pairing_url()}")
 
-    # Start background tasks (Telemetry + 500Hz Anti-PSM Heartbeat)
     asyncio.create_task(tvisio.broadcast_telemetry())
     asyncio.create_task(tvisio.anti_psm_heartbeat_loop())
 
-    # Keep running forever
     await asyncio.Event().wait()
 
 

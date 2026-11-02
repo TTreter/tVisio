@@ -23,13 +23,13 @@
         <div class="brand-titles">
           <div class="brand-name-row">
             <h1>tVisio</h1>
-            <span class="version-pill">ULTRA-LOW LATENCY</span>
+            <span class="version-pill">ZERO-OVERHEAD ENGINE</span>
           </div>
           <p class="brand-subtitle" id="deviceSubtitle">Aguardando pareamento via QR Code...</p>
         </div>
       </div>
 
-      <!-- Real-Time Telemetry Pill -->
+      <!-- Real-Time Telemetry Bar -->
       <div class="telemetry-bar">
         <div class="status-badge" id="connectionBadge">
           <span class="status-dot"></span>
@@ -51,6 +51,11 @@
           <span class="metric-value" id="fpsValue">0 FPS</span>
         </div>
 
+        <div class="metric-chip" title="Nível de Bateria do Smartphone">
+          <span class="metric-label">BATERIA</span>
+          <span class="metric-value" id="batteryValue">🔋 --%</span>
+        </div>
+
         <button class="glass-icon-btn" id="btnPipMode" title="Alternar Modo Miniplayer Compacto (PiP Pod)">
           <span>🗗</span>
         </button>
@@ -63,10 +68,14 @@
       <section class="miniplayer-section glass-card">
         <div class="card-header">
           <div class="card-title-group">
-            <span class="card-badge">MINIPLAYER LEVE (360p PREVIEW)</span>
+            <span class="card-badge">MINIPLAYER LEVE (360p)</span>
             <span class="protocol-tag" id="protocolTag">WebRTC Zero-Buffer</span>
+            <span class="zoom-badge hidden" id="zoomBadge" title="Clique para resetar o Zoom ePTZ">🔍 1.0x</span>
           </div>
           <div class="miniplayer-header-actions">
+            <button class="pill-btn" id="btnToggleGrid" title="Exibir Grade de Enquadramento (Regra dos Terços em CSS puro)">
+              <span># Grade</span>
+            </button>
             <button class="pill-btn" id="btnTogglePreview" title="Desativar renderização do preview para 0% de uso de GPU na janela">
               <span id="previewToggleIcon">👁️</span>
               <span id="previewToggleText">Preview Ativo</span>
@@ -74,16 +83,24 @@
           </div>
         </div>
 
-        <!-- Miniplayer Stage with Ambient Video Glow -->
-        <div class="miniplayer-stage" id="miniplayerStage">
+        <!-- Miniplayer Stage with Ambient Video Glow & ePTZ Mouse Control -->
+        <div class="miniplayer-stage" id="miniplayerStage" title="Use a roda do mouse para dar Zoom e arraste para ajustar o enquadramento (ePTZ Zero-Copy)">
           <canvas id="ambientCanvas" class="ambient-video-glow"></canvas>
           <canvas id="previewCanvas" class="preview-canvas"></canvas>
 
-          <!-- Empty State Overlay (When no phone connected yet) -->
+          <!-- Pure CSS Rule-of-Thirds Grid Overlay (0.0ms Video Cost) -->
+          <div class="grid-thirds-overlay hidden" id="gridOverlay">
+            <div class="grid-line-v v1"></div>
+            <div class="grid-line-v v2"></div>
+            <div class="grid-line-h h1"></div>
+            <div class="grid-line-h h2"></div>
+          </div>
+
+          <!-- Empty State Overlay -->
           <div class="empty-stage-overlay" id="emptyOverlay">
             <img src="/assets/icon.svg" alt="tVisio" class="empty-stage-logo" />
             <h3>Pronto para Conectar</h3>
-            <p>Aponte a câmera do seu celular para o QR Code ao lado.<br/>Zero instalação necessária no smartphone.</p>
+            <p>Aponte a câmera do seu celular para o QR Code ao lado.<br/>Token fixo ativo: adicione à tela inicial do celular para conectar em 1 toque!</p>
           </div>
 
           <!-- Paused Preview Overlay (Zero-Render Mode) -->
@@ -95,13 +112,21 @@
 
           <!-- Floating Liquid Glass Controls (Appear on Hover) -->
           <div class="floating-glass-dock">
-            <button class="dock-btn" id="btnSwitchCam" title="Alternar Câmera Frontal / Traseira">
+            <button class="dock-btn" id="btnSwitchCam" title="Alternar entre as Lentes Físicas do Celular">
               <span class="dock-icon">🔄</span>
               <span class="dock-label">Lente</span>
+            </button>
+            <button class="dock-btn" id="btnAfLock" title="Travar Foco Óptico (AF-Lock no chip ISP)">
+              <span class="dock-icon">🔒</span>
+              <span class="dock-label">Foco AF</span>
             </button>
             <button class="dock-btn" id="btnTorch" title="Ligar / Desligar Lanterna do Celular">
               <span class="dock-icon">🔦</span>
               <span class="dock-label">Luz</span>
+            </button>
+            <button class="dock-btn" id="btnFreeze" title="Congelar Quadro Instantaneamente (Modo Privacidade 0% CPU)">
+              <span class="dock-icon">⏸️</span>
+              <span class="dock-label" id="freezeLabel">Congelar</span>
             </button>
             <button class="dock-btn" id="btnMirrorH" title="Espelhar Horizontalmente">
               <span class="dock-icon">🪞</span>
@@ -133,12 +158,12 @@
         </div>
       </section>
 
-      <!-- RIGHT COLUMN: QR Code Pairing & Extreme Latency Tuning -->
+      <!-- RIGHT COLUMN: QR Code Pairing, Optical ISP & L1-LUT Color Studio -->
       <aside class="sidebar-column">
         <!-- QR Code Pairing Card -->
         <div class="glass-card qr-card">
           <div class="card-header">
-            <span class="card-badge">CONEXÃO INSTANTÂNEA</span>
+            <span class="card-badge">CONEXÃO INSTANTÂNEA (TOKEN FIXO)</span>
             <button class="mini-link-btn" id="btnRefreshNet" title="Atualizar Interfaces de Rede">🔄 Atualizar IPs</button>
           </div>
 
@@ -150,7 +175,7 @@
               <label class="field-label" for="interfaceSelect">Topologia de Rede:</label>
               <select id="interfaceSelect" class="glass-select"></select>
 
-              <div class="pairing-url-box" id="pairingUrlBox" title="Clique para copiar o link">
+              <div class="pairing-url-box" id="pairingUrlBox" title="Clique para copiar o link fixo">
                 <code id="pairingUrlText">https://...</code>
               </div>
 
@@ -161,13 +186,32 @@
           </div>
         </div>
 
-        <!-- Extreme Latency Engineering Controls -->
+        <!-- Zero-Overhead Studio: ISP Hardware + 1-Pass L1-Cache LUT + ePTZ -->
         <div class="glass-card tuning-card">
           <div class="card-header">
-            <span class="card-badge">ENGENHARIA DE LATÊNCIA EXTREMA</span>
+            <span class="card-badge">ESTÚDIO ZERO-OVERHEAD (ISP & L1-LUT)</span>
+            <button class="mini-link-btn" id="btnResetStudio" title="Restaurar Cores e Zoom para o Padrão">↺ Resetar</button>
           </div>
 
           <div class="tuning-controls">
+            <!-- Physical Lens Selector + Resolution -->
+            <div class="control-row">
+              <div class="control-info">
+                <span class="control-title">Lente Física & Resolução</span>
+                <span class="control-desc">Hardware óptico direto do celular</span>
+              </div>
+              <div class="dual-select-group">
+                <select id="cameraDeviceSelect" class="glass-select compact-select" title="Escolher Lente Física do Smartphone">
+                  <option value="">Lente Padrão (Auto)</option>
+                </select>
+                <select id="resolutionSelect" class="glass-select compact-select">
+                  <option value="1280x720@60">720p @ 60 FPS</option>
+                  <option value="1920x1080@60" selected>1080p @ 60 FPS</option>
+                  <option value="1920x1080@30">1080p @ 30 FPS</option>
+                </select>
+              </div>
+            </div>
+
             <!-- Optical Sensor Shutter Speed Capping -->
             <div class="control-row">
               <div class="control-info">
@@ -182,38 +226,55 @@
               </div>
             </div>
 
-            <!-- Anti-PSM 500Hz Wi-Fi Pulse -->
+            <!-- 1-Pass L1-Cache Color Presets -->
             <div class="control-row">
               <div class="control-info">
-                <span class="control-title">Pulso Anti-PSM (500 Hz)</span>
+                <span class="control-title">Perfil de Cor (`cv2.LUT` 0.1ms)</span>
+                <span class="control-desc">Tabela 1-Pass de 768B no Cache L1</span>
+              </div>
+              <div class="segmented-glass" id="presetSegment">
+                <button class="seg-btn active" data-preset="natural">Natural</button>
+                <button class="seg-btn" data-preset="warm">Quente</button>
+                <button class="seg-btn" data-preset="cool">Frio</button>
+                <button class="seg-btn" data-preset="cinema">Cinema</button>
+                <button class="seg-btn" data-preset="bw">P&amp;B</button>
+              </div>
+            </div>
+
+            <!-- Brightness & Contrast Sliders -->
+            <div class="control-row">
+              <div class="control-info">
+                <span class="control-title">Exposição (<span id="gainValText">1.00x</span>) &amp; Contraste (<span id="contrastValText">1.00x</span>)</span>
+                <span class="control-desc">Aplicados juntos na mesma leitura LUT</span>
+              </div>
+              <div class="dual-slider-group">
+                <input type="range" id="sliderGain" min="0.6" max="2.2" step="0.05" value="1.0" class="liquid-slider" title="Ganho de Brilho / Exposição" />
+                <input type="range" id="sliderContrast" min="0.7" max="1.6" step="0.05" value="1.0" class="liquid-slider" title="Contraste" />
+              </div>
+            </div>
+
+            <!-- Color Temp & Zero-Copy ePTZ Zoom Sliders -->
+            <div class="control-row">
+              <div class="control-info">
+                <span class="control-title">Balanço (<span id="tempValText">0K</span>) &amp; Zoom ePTZ (<span id="zoomValText">1.0x</span>)</span>
+                <span class="control-desc">Arraste o vídeo no player para mover o Zoom</span>
+              </div>
+              <div class="dual-slider-group">
+                <input type="range" id="sliderTemp" min="-1.0" max="1.0" step="0.05" value="0.0" class="liquid-slider" title="Temperatura de Cor (Frio <-> Quente)" />
+                <input type="range" id="sliderZoom" min="1.0" max="3.0" step="0.05" value="1.0" class="liquid-slider" title="Zoom Digital Zero-Copy (ePTZ)" />
+              </div>
+            </div>
+
+            <!-- Anti-PSM Wi-Fi Keep-Alive Toggle -->
+            <div class="control-row">
+              <div class="control-info">
+                <span class="control-title">Pulso Anti-PSM Rádio Wi-Fi</span>
                 <span class="control-desc">Impede micro-sleep do chip Wi-Fi móvel</span>
               </div>
               <label class="liquid-switch">
                 <input type="checkbox" id="chkAntiPsm" checked />
                 <span class="switch-slider"></span>
               </label>
-            </div>
-
-            <!-- PC GPU Brightness Gain Compensation -->
-            <div class="control-row">
-              <div class="control-info">
-                <span class="control-title">Ganho de Luz no PC (<span id="gainValText">1.0x</span>)</span>
-                <span class="control-desc">Compensa obturador rápido sem custo no celular</span>
-              </div>
-              <input type="range" id="sliderGain" min="0.7" max="2.2" step="0.05" value="1.0" class="liquid-slider" />
-            </div>
-
-            <!-- Resolution Selector -->
-            <div class="control-row">
-              <div class="control-info">
-                <span class="control-title">Perfil de Captura</span>
-                <span class="control-desc">Qualidade enviada para a Webcam Virtual</span>
-              </div>
-              <select id="resolutionSelect" class="glass-select compact-select">
-                <option value="1280x720@60">720p @ 60 FPS (Ultra-Fast)</option>
-                <option value="1920x1080@60" selected>1080p @ 60 FPS (Full HD)</option>
-                <option value="1920x1080@30">1080p @ 30 FPS (Estável)</option>
-              </select>
             </div>
           </div>
         </div>

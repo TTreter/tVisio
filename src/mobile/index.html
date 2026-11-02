@@ -6,6 +6,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>tVisio Camera Transmitter</title>
+  <link rel="manifest" href="/manifest.json" />
   <link rel="icon" type="image/svg+xml" href="/assets/icon.svg" />
   <link rel="stylesheet" href="/mobile-static/mobile.css" />
 </head>
@@ -26,11 +27,15 @@
     <div class="mobile-glass-dock">
       <button class="m-dock-btn" id="mBtnSwitch">
         <span class="m-icon">🔄</span>
-        <span>Virar</span>
+        <span>Lente</span>
       </button>
       <button class="m-dock-btn" id="mBtnTorch">
         <span class="m-icon">🔦</span>
         <span>Luz</span>
+      </button>
+      <button class="m-dock-btn" id="mBtnAfLock">
+        <span class="m-icon">🔒</span>
+        <span>Foco AF</span>
       </button>
       <button class="m-dock-btn" id="mBtnShutter">
         <span class="m-icon">⚡</span>

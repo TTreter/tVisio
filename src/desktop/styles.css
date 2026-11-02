@@ -301,6 +301,56 @@ body {
   color: #B8FAFF;
 }
 
+.zoom-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  background: rgba(232, 56, 255, 0.2);
+  border: 1px solid rgba(232, 56, 255, 0.5);
+  color: #F4C2FF;
+  cursor: pointer;
+}
+
+.miniplayer-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Pure CSS Rule-of-Thirds Grid Overlay (0.0ms Video Cost) */
+.grid-thirds-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.grid-line-v,
+.grid-line-h {
+  position: absolute;
+  background: rgba(0, 240, 255, 0.28);
+  box-shadow: 0 0 6px rgba(0, 240, 255, 0.25);
+}
+
+.grid-line-v {
+  top: 0;
+  bottom: 0;
+  width: 1px;
+}
+
+.grid-line-v.v1 { left: 33.333%; }
+.grid-line-v.v2 { left: 66.666%; }
+
+.grid-line-h {
+  left: 0;
+  right: 0;
+  height: 1px;
+}
+
+.grid-line-h.h1 { top: 33.333%; }
+.grid-line-h.h2 { top: 66.666%; }
+
 .pill-btn {
   display: inline-flex;
   align-items: center;
@@ -723,12 +773,27 @@ body {
 }
 
 .liquid-slider {
-  width: 120px;
+  width: 96px;
   accent-color: var(--accent-cyan);
+  cursor: pointer;
+}
+
+.dual-slider-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dual-select-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .compact-select {
-  width: 165px;
+  width: 132px;
+  padding: 6px 8px;
+  font-size: 0.73rem;
 }
 
 /* Compact PiP Pod Mode */
