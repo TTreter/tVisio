@@ -159,14 +159,15 @@
 
       const sender = pc.addTrack(videoTrack, currentStream);
 
-      // Set DSCP High Priority (WMM Voice/Video queue) & high bitrate
+      // Set DSCP High Priority (WMM Voice/Video queue) & tuned low-latency bitrate
       if (sender.getParameters && sender.setParameters) {
         try {
           const params = sender.getParameters();
+          params.degradationPreference = "maintain-resolution";
           if (params.encodings && params.encodings.length > 0) {
             params.encodings[0].priority = "high";
             params.encodings[0].networkPriority = "high";
-            params.encodings[0].maxBitrate = 8_000_000;
+            params.encodings[0].maxBitrate = 4_500_000;
             params.encodings[0].maxFramerate = 60;
             await sender.setParameters(params);
           }
@@ -177,6 +178,12 @@
         webrtcConnected = pc.connectionState === "connected" || pc.connectionState === "completed";
         if (webrtcConnected) {
           capsuleStatus.textContent = "WebRTC Zero-Buffer";
+        } else if (pc.connectionState === "failed" || pc.connectionState === "disconnected") {
+          try {
+            pc.close();
+          } catch (_) {}
+          pc = null;
+          setTimeout(startWebRTC, 1200);
         }
       };
 

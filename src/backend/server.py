@@ -24,8 +24,8 @@ from typing import Set, Optional, Dict, Any
 
 import aiohttp
 from aiohttp import web
+import cv2
 import numpy as np
-from PIL import Image
 import qrcode
 
 try:
@@ -123,9 +123,9 @@ class TVisioServer:
 
     async def anti_psm_heartbeat_loop(self) -> None:
         """
-        500Hz (2ms) Anti-PSM Micro-Pulse Generator.
+        100Hz (10ms) Anti-PSM Micro-Pulse Generator.
         Sends a 1-byte binary frame (0x01) to connected mobile clients to keep the
-        smartphone's Wi-Fi radio awake and prevent Power Save Mode (PSM) latency spikes.
+        smartphone's Wi-Fi radio awake (preventing 50-100ms PSM sleep) without starving event loop.
         """
         pulse_packet = b"\x01"
         while True:
@@ -136,7 +136,7 @@ class TVisioServer:
                             await ws.send_bytes(pulse_packet)
                         except Exception:
                             pass
-                await asyncio.sleep(0.003)  # ~333-500Hz keep-alive pulse
+                await asyncio.sleep(0.010)
             else:
                 await asyncio.sleep(0.05)
 
@@ -269,10 +269,17 @@ class TVisioServer:
         params = await request.json()
         offer = RTCSessionDescription(sdp=params["sdp"], type=params["type"])
 
+        # Close any stale PeerConnections to free FFmpeg decoder memory immediately
+        for old_pc in list(self.pcs):
+            self.pcs.discard(old_pc)
+            try:
+                await old_pc.close()
+            except Exception:
+                pass
+
         pc = RTCPeerConnection()
         self.pcs.add(pc)
 
-        # Apply QoS DSCP EF on underlying transport if available
         @pc.on("connectionstatechange")
         async def on_connectionstatechange() -> None:
             logger.info(f"WebRTC state: {pc.connectionState}")
@@ -281,6 +288,10 @@ class TVisioServer:
                 self.active_protocol = "WebRTC Zero-Buffer (UDP/RTP)"
             elif pc.connectionState in ("failed", "closed", "disconnected"):
                 self.pcs.discard(pc)
+                try:
+                    await pc.close()
+                except Exception:
+                    pass
                 if not self.pcs and not self.mobile_ws_clients:
                     self.mobile_connected = False
                     self.active_protocol = "Standby"
@@ -312,18 +323,40 @@ class TVisioServer:
         })
 
     async def _consume_webrtc_video(self, track: Any) -> None:
-        """Consumes decoded frames from WebRTC video track with zero queuing."""
+        """
+        Consumes decoded frames from WebRTC video track with strict Zero-Queue draining.
+        Any intermediate frames waiting in aiortc's internal `_queue` are immediately
+        discarded so only the single newest frame is processed (0 accumulated lag & 0 RAM leak).
+        """
         try:
             while True:
                 t_start = time.perf_counter()
                 frame = await track.recv()
-                rgb = frame.to_ndarray(format="rgb24")
-                preview_jpeg = self.vcam.process_and_push_rgb(rgb)
+
+                # Drain any backlog in aiortc's internal queue to prevent [Errno 12] ENOMEM and lag
+                q = getattr(track, "_queue", None)
+                if q is not None:
+                    while not q.empty():
+                        try:
+                            newer = q.get_nowait()
+                            del frame
+                            frame = newer
+                        except Exception:
+                            break
+
+                bgr = frame.to_ndarray(format="bgr24")
+                del frame
+
+                preview_jpeg = self.vcam.process_and_push_bgr(bgr)
+                del bgr
+
                 if preview_jpeg:
                     await self.push_miniplayer_preview(preview_jpeg)
+
                 decode_elapsed = (time.perf_counter() - t_start) * 1000.0
-                # Estimate Glass-to-Glass latency = RTT/2 + sensor (6ms) + decode
                 self.glass_to_glass_ms = max(8.5, (self.rtt_ms * 0.5) + 6.5 + min(decode_elapsed, 6.0))
+                # Yield briefly to event loop so socket/ICE tasks run smoothly
+                await asyncio.sleep(0)
         except Exception as e:
             logger.info(f"WebRTC track ended: {e}")
 
@@ -359,13 +392,14 @@ class TVisioServer:
                         # Send immediate ack for RTT calculation
                         await ws.send_str(json.dumps({"type": "ack", "ts": client_ts}))
 
-                        # Decode frame in memory
+                        # Decode frame in memory using fast C++ OpenCV decoder
                         t0 = time.perf_counter()
-                        img = Image.open(io.BytesIO(jpeg_bytes)).convert("RGB")
-                        rgb_arr = np.asarray(img)
-                        preview_jpeg = self.vcam.process_and_push_rgb(rgb_arr)
-                        if preview_jpeg:
-                            await self.push_miniplayer_preview(preview_jpeg)
+                        buf_arr = np.frombuffer(jpeg_bytes, dtype=np.uint8)
+                        bgr_arr = cv2.imdecode(buf_arr, cv2.IMREAD_COLOR)
+                        if bgr_arr is not None:
+                            preview_jpeg = self.vcam.process_and_push_bgr(bgr_arr)
+                            if preview_jpeg:
+                                await self.push_miniplayer_preview(preview_jpeg)
 
                         decode_ms = (time.perf_counter() - t0) * 1000.0
                         if self.active_protocol.startswith("WebSocket") or not self.pcs:
