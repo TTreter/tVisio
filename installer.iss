@@ -28,8 +28,7 @@ DefaultGroupName={#MyAppName}
 AllowNoIcons=yes
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
-PrivilegesRequired=lowest
-PrivilegesRequiredOverridesAllowed=commandline dialog
+PrivilegesRequired=admin
 
 ; Estilo e Compressão Ultra
 SetupIconFile=assets\icon.ico
@@ -37,7 +36,6 @@ UninstallDisplayIcon={app}\{#MyAppExeName},0
 Compression=lzma2/ultra64
 SolidCompression=yes
 WizardStyle=modern
-WizardResizable=no
 DisableWelcomePage=no
 
 ; Saída do Instalador
@@ -55,17 +53,23 @@ Name: "startup"; Description: "Iniciar automaticamente com o Windows"; GroupDesc
 [Files]
 Source: "target\release\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "assets\icon.ico"; DestDir: "{app}"; Flags: ignoreversion
-Source: "assets\driver\UnityCaptureFilter64.dll"; DestDir: "{app}\_local\driver"; Flags: ignoreversion regserver
+Source: "assets\driver\UnityCaptureFilter64.dll"; DestDir: "{app}\_local\driver"; Flags: ignoreversion
 Source: "assets\driver\UnityCaptureFilter32.dll"; DestDir: "{app}\_local\driver"; Flags: ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\icon.ico"
 Name: "{group}\{cm:UninstallProgram,{#MyAppName}}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon; IconFilename: "{app}\icon.ico"
-Name: "{userstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--startup"; Tasks: startup; IconFilename: "{app}\icon.ico"
+Name: "{commonstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--startup"; Tasks: startup; IconFilename: "{app}\icon.ico"
 
 [Run]
+Filename: "{sys}\regsvr32.exe"; Parameters: "/s ""{app}\_local\driver\UnityCaptureFilter64.dll"""; Flags: runhidden
+Filename: "{syswow64}\regsvr32.exe"; Parameters: "/s ""{app}\_local\driver\UnityCaptureFilter32.dll"""; Flags: runhidden; Check: Is64BitInstallMode
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
+
+[UninstallRun]
+Filename: "{sys}\regsvr32.exe"; Parameters: "/u /s ""{app}\_local\driver\UnityCaptureFilter64.dll"""; Flags: runhidden; RunOnceId: "UnregUnityCapture64"
+Filename: "{syswow64}\regsvr32.exe"; Parameters: "/u /s ""{app}\_local\driver\UnityCaptureFilter32.dll"""; Flags: runhidden; RunOnceId: "UnregUnityCapture32"; Check: Is64BitInstallMode
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\_local"
