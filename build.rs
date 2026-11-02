@@ -111,5 +111,12 @@ HRESULT WINAPI GetAvailableCoreWebView2BrowserVersionString(LPCWSTR browserFolde
         );
         res.set("LegalCopyright", "Copyright (C) 2026 Tiago Treter (@TTreter) - GPLv3");
         let _ = res.compile();
+
+        if let Ok(out_dir) = env::var("OUT_DIR") {
+            let res_o = PathBuf::from(&out_dir).join("resource.o");
+            if res_o.exists() {
+                println!("cargo:rustc-link-arg={}", res_o.display());
+            }
+        }
     }
 }

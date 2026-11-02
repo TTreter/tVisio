@@ -127,12 +127,13 @@ pub fn install_vcam_driver_offline(base_dir: &Path) -> Result<bool, String> {
     #[cfg(target_os = "windows")]
     unsafe {
         let verb = to_wide("runas");
-        let file = to_wide("regsvr32.exe");
-        let params = to_wide(&format!(
-            "/s \"{}\" \"{}\"",
+        let file = to_wide("cmd.exe");
+        let commands = format!(
+            "/c regsvr32.exe /s \"{}\" & if exist \"%WINDIR%\\SysWOW64\\regsvr32.exe\" \"%WINDIR%\\SysWOW64\\regsvr32.exe\" /s \"{}\"",
             dll64_path.display(),
             dll32_path.display()
-        ));
+        );
+        let params = to_wide(&commands);
         let ret = ShellExecuteW(
             ptr::null_mut(),
             verb.as_ptr(),

@@ -547,21 +547,6 @@
   });
 
   // --- Controles da Aba de Ajustes (Sistema & Bandeja do Windows) ---
-
-  // Botão de atalho de engrenagem no cabeçalho superior abre a aba Ajustes
-  const btnOpenSettings = document.getElementById("btnOpenSettings");
-  if (btnOpenSettings) {
-    btnOpenSettings.addEventListener("click", () => {
-      document.getElementById("appShell").classList.remove("pip-mode");
-      document.querySelectorAll("#sidebarTabs .tab-btn").forEach((b) => {
-        b.classList.toggle("active", b.dataset.tab === "tabSettings");
-      });
-      document.querySelectorAll(".tab-panel").forEach((p) => {
-        p.classList.toggle("active", p.id === "tabSettings");
-      });
-    });
-  }
-
   document.getElementById("chkStartWindows").addEventListener("change", (e) => {
     sendCommand({ action: "set_app_settings", start_with_windows: e.target.checked });
   });

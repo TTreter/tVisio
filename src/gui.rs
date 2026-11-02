@@ -241,13 +241,7 @@ pub fn run_native_desktop_window(state: SharedState, should_start_minimized: boo
         }
 
         if let Some(enable_pip) = pip_req {
-            if enable_pip {
-                window.set_always_on_top(true);
-                window.set_inner_size(LogicalSize::new(500.0, 430.0));
-            } else {
-                window.set_always_on_top(false);
-                window.set_inner_size(LogicalSize::new(1180.0, 740.0));
-            }
+            window.set_always_on_top(enable_pip);
         }
 
         // 4. Eventos de Janela (Fechar X para Bandeja e Minimizar para Bandeja)

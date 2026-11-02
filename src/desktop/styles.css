@@ -1079,28 +1079,24 @@ svg.paused-svg-icon {
   color: #FFFFFF;
 }
 
-/* Compact PiP Mode */
-.app-shell.pip-mode .sidebar-column,
-.app-shell.pip-mode .vcam-status-bar,
-.app-shell.pip-mode .brand-titles {
-  display: none;
+/* Compact / Expanded Focus Mode */
+.app-shell.pip-mode .sidebar-column {
+  display: none !important;
 }
 
 .app-shell.pip-mode .main-grid {
   grid-template-columns: 1fr;
 }
 
+html, body {
+  overflow: hidden !important;
+}
+
 @media (max-width: 960px) {
-  html, body {
-    overflow-y: auto;
-  }
   .app-shell {
-    height: auto;
+    height: 100vh;
   }
   .main-grid {
     grid-template-columns: 1fr;
-  }
-  .miniplayer-stage {
-    min-height: 360px;
   }
 }
