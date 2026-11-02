@@ -184,6 +184,6 @@ A janela nativa desktop do **tVisio** abrirá automaticamente.
 Este projeto é software livre distribuído sob os termos da licença **[GNU General Public License v3.0 (GPLv3)](LICENSE)**.
 
 ```
-Copyright (C) 2026 Tiago Treter
+Copyright (C) 2026 Tiago Treter (@TTreter)
 ```
 Consulte o arquivo [`LICENSE`](LICENSE) para mais informações.
