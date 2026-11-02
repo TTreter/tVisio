@@ -620,6 +620,108 @@
     }, 150);
   });
 
+  // --- Verificador de Atualizações do GitHub ---
+  const CURRENT_APP_VERSION = "v2.0.0";
+  let latestGitHubRelease = null;
+
+  function compareSemanticVersions(v1, v2) {
+    const clean1 = (v1 || "").replace(/^v/, "").split(".").map((x) => parseInt(x, 10) || 0);
+    const clean2 = (v2 || "").replace(/^v/, "").split(".").map((x) => parseInt(x, 10) || 0);
+    for (let i = 0; i < Math.max(clean1.length, clean2.length); i++) {
+      const n1 = clean1[i] || 0;
+      const n2 = clean2[i] || 0;
+      if (n1 > n2) return 1;
+      if (n1 < n2) return -1;
+    }
+    return 0;
+  }
+
+  async function checkAppUpdates(isManual = false) {
+    const btnCheckUpdate = document.getElementById("btnCheckUpdate");
+    const btnCheckUpdateText = document.getElementById("btnCheckUpdateText");
+    const updateStatusText = document.getElementById("updateStatusText");
+    const updateActionRow = document.getElementById("updateActionRow");
+    const updateIcon = document.getElementById("updateIcon");
+    const versionBadge = document.getElementById("versionBadge");
+
+    if (isManual && btnCheckUpdateText) {
+      btnCheckUpdateText.textContent = "Buscando...";
+      if (updateIcon) updateIcon.style.animation = "spin 0.9s linear infinite";
+    }
+
+    try {
+      const res = await fetch("https://api.github.com/repos/TTreter/tVisio/releases/latest", {
+        headers: { Accept: "application/vnd.github.v3+json" },
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const release = await res.json();
+      latestGitHubRelease = release;
+
+      const latestTag = release.tag_name || "";
+      const isNewer = compareSemanticVersions(latestTag, CURRENT_APP_VERSION) > 0;
+
+      if (isNewer) {
+        if (updateStatusText) {
+          updateStatusText.textContent = `Nova versão ${latestTag} disponível!`;
+          updateStatusText.style.color = "#00F0FF";
+        }
+        if (updateActionRow) updateActionRow.style.display = "block";
+        if (versionBadge) {
+          versionBadge.textContent = `UPDATE: ${latestTag}`;
+          versionBadge.style.cursor = "pointer";
+          versionBadge.title = `Nova versão ${latestTag} disponível! Clique para ver.`;
+          versionBadge.onclick = () => {
+            document.querySelectorAll("#sidebarTabs .tab-btn").forEach((b) => {
+              b.classList.toggle("active", b.dataset.tab === "tabSettings");
+            });
+            document.querySelectorAll(".tab-panel").forEach((p) => {
+              p.classList.toggle("active", p.id === "tabSettings");
+            });
+          };
+        }
+        if (isManual && btnCheckUpdateText) btnCheckUpdateText.textContent = "Disponível!";
+      } else {
+        if (updateStatusText) {
+          updateStatusText.textContent = `Você está na versão mais recente (${CURRENT_APP_VERSION}).`;
+          updateStatusText.style.color = "";
+        }
+        if (updateActionRow) updateActionRow.style.display = "none";
+        if (isManual && btnCheckUpdateText) btnCheckUpdateText.textContent = "Atualizado";
+      }
+    } catch (_) {
+      if (updateStatusText) {
+        updateStatusText.textContent = "Não foi possível verificar no GitHub.";
+      }
+      if (isManual && btnCheckUpdateText) btnCheckUpdateText.textContent = "Tentar";
+    } finally {
+      if (updateIcon) updateIcon.style.animation = "";
+    }
+  }
+
+  const btnCheckUpdate = document.getElementById("btnCheckUpdate");
+  if (btnCheckUpdate) {
+    btnCheckUpdate.addEventListener("click", () => checkAppUpdates(true));
+  }
+
+  const btnDownloadUpdate = document.getElementById("btnDownloadUpdate");
+  if (btnDownloadUpdate) {
+    btnDownloadUpdate.addEventListener("click", async () => {
+      const url = (latestGitHubRelease && latestGitHubRelease.html_url) || "https://github.com/TTreter/tVisio/releases/latest";
+      try {
+        await fetch("/api/open-external", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url }),
+        });
+      } catch (_) {
+        window.open(url, "_blank");
+      }
+    });
+  }
+
+  // Checagem automática não-bloqueante 2s após a inicialização
+  setTimeout(() => checkAppUpdates(false), 2200);
+
   // Inicialização do WebSocket
   connectDesktopWS();
 })();

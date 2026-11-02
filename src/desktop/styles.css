@@ -1092,6 +1092,15 @@ html, body {
   overflow: hidden !important;
 }
 
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @media (max-width: 960px) {
   .app-shell {
     height: 100vh;

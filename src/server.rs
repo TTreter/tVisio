@@ -255,6 +255,7 @@ pub fn build_router(state: SharedState) -> Router {
         .route("/api/firewall", post(handle_firewall))
         .route("/api/regenerate-token", post(handle_regenerate_token))
         .route("/api/open-data-dir", post(handle_open_data_dir))
+        .route("/api/open-external", post(handle_open_external))
         .route("/api/app/quit", post(handle_app_quit))
         .route("/api/webrtc/offer", post(handle_webrtc_offer))
         .route("/ws/stream", get(handle_mobile_ws))
@@ -525,6 +526,17 @@ async fn handle_regenerate_token(State(state): State<SharedState>) -> Json<Value
 async fn handle_open_data_dir(State(state): State<SharedState>) -> Json<Value> {
     let local_dir = state.lock().unwrap().base_dir.join("_local");
     open_local_data_folder(&local_dir);
+    Json(json!({ "ok": true }))
+}
+
+async fn handle_open_external(Json(payload): Json<Value>) -> Json<Value> {
+    if let Some(url) = payload.get("url").and_then(|v| v.as_str()) {
+        if url.starts_with("https://") || url.starts_with("http://") {
+            let _ = std::process::Command::new("cmd")
+                .args(["/C", "start", "", url])
+                .spawn();
+        }
+    }
     Json(json!({ "ok": true }))
 }
 
