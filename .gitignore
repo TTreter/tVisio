@@ -2,7 +2,11 @@
 _local/
 /_local/
 
-# Python
+# Rust / Cargo Build Artifacts
+/target/
+target/
+
+# Python (Legacy)
 __pycache__/
 *.py[cod]
 *$py.class
@@ -13,7 +17,7 @@ venv/
 env/
 *.egg-info/
 
-# Node / Electron / Frontend
+# Frontend / Packaging
 node_modules/
 dist/
 build/

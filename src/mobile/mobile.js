@@ -75,7 +75,8 @@
     if (autoEcoTimer) clearTimeout(autoEcoTimer);
     if (!ecoMode && autoEcoEnabled) {
       autoEcoTimer = setTimeout(() => {
-        if (webrtcConnected && autoEcoEnabled) {
+        const isStreaming = webrtcConnected || (ws && ws.readyState === WebSocket.OPEN);
+        if (isStreaming && autoEcoEnabled) {
           toggleEcoMode(true);
         }
       }, 8000);
@@ -505,8 +506,9 @@
         return;
       }
 
-      // Limita o fallback a 24fps para não elevar o uso de CPU durante negociação WebRTC
-      if (!frameInFlight && videoEl.readyState >= 2 && now - lastFallbackTime >= 41) {
+      // Respeita a taxa de quadros alvo (30 FPS ou 60 FPS) com controle de fluxo Zero-Queue (1 frame in-flight)
+      const minIntervalMs = Math.max(14, Math.floor(1000 / targetFps) - 3);
+      if (!frameInFlight && videoEl.readyState >= 2 && now - lastFallbackTime >= minIntervalMs) {
         lastFallbackTime = now;
         const vw = videoEl.videoWidth || 1280;
         const vh = videoEl.videoHeight || 720;

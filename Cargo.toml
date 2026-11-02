@@ -1,0 +1,68 @@
+[package]
+name = "tVisio"
+version = "2.0.0"
+edition = "2021"
+authors = ["Tiago Treter <@TTreter>"]
+description = "tVisio — Ultra-Low Latency Virtual Webcam (Native Rust Zero-Overhead Engine)"
+license = "GPL-3.0-only"
+build = "build.rs"
+
+[[bin]]
+name = "tVisio"
+path = "src/main.rs"
+
+[dependencies]
+# Interface Gráfica Nativa Desktop (OpenGL)
+eframe = { version = "0.31", default-features = false, features = [
+    "default_fonts",
+    "glow",
+    "persistence",
+] }
+egui = "0.31"
+
+# Runtime Assíncrono Multithread e Servidor Web/WebSocket de Baixa Latência
+tokio = { version = "1.40", features = ["full"] }
+axum = { version = "0.7", features = ["ws"] }
+axum-server = { version = "0.7", features = ["tls-rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+futures-util = "0.3"
+
+# Criptografia TLS Multi-SAN Autoassinada (100% Rust puro, sem OpenSSL)
+rcgen = "0.12"
+rand = "0.8"
+
+# Serialização JSON de Alta Performance
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Processamento de Imagem, Decodificação JPEG e Geração de QR Code
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "ico"] }
+qrcode = { version = "0.14", default-features = false }
+
+# Descoberta de Interfaces de Rede Local (USB / Hotspot / LAN)
+local-ip-address = "0.6"
+
+# Bandeja do Sistema Nativa do Windows (System Tray)
+tray-icon = "0.19"
+
+# Integração Nativa com APIs Win32, Shared Memory DirectShow, Sockets QoS e Registro
+winreg = "0.52"
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_System_Memory",
+    "Win32_System_Threading",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Networking_WinSock",
+] }
+
+[build-dependencies]
+winres = "0.1"
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true

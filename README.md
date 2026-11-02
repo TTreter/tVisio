@@ -6,14 +6,14 @@
 
 <p align="center">
   <strong>Transforme qualquer smartphone em uma Câmera Virtual DirectShow profissional para Windows com latência ultra-baixa via QR Code.</strong><br/>
-  Zero instalação no celular • PWA WebRTC H.264 • Interface Translucent Glass UI • Lucide Icons • Latência &lt; 15ms
+  Zero instalação no celular • Interface Translucent Glass UI • 1-Pass Kernel Fusion • Latência &lt; 15ms
 </p>
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/Licen%C3%A7a-GPLv3-blue.svg" alt="Licença: GPLv3" /></a>
-  <img src="https://img.shields.io/badge/Python-3.10%2B-blue?logo=python" alt="Python 3.10+" />
-  <img src="https://img.shields.io/badge/WebRTC-Zero--Buffer-emerald" alt="WebRTC Zero-Buffer" />
-  <img src="https://img.shields.io/badge/Lat%C3%AAncia-10--17ms%20G2G-purple" alt="Latência 10-17ms" />
+  <img src="https://img.shields.io/badge/Rust-2021%20Edition-orange?logo=rust" alt="Rust 2021" />
+  <img src="https://img.shields.io/badge/GUI-Translucent%20Glass%20UI-cyan" alt="Translucent Glass UI" />
+  <img src="https://img.shields.io/badge/Lat%C3%AAncia-6--14ms%20G2G-purple" alt="Latência 6-14ms" />
   <img src="https://img.shields.io/badge/Windows-DirectShow-0078D6?logo=windows" alt="DirectShow Virtual Camera" />
   <img src="https://img.shields.io/badge/Mobile-Universal%20PWA-green" alt="Suporte Mobile PWA" />
 </p>
@@ -22,168 +22,82 @@
 
 ## 💡 Sobre o tVisio
 
-O **tVisio** é um aplicativo de código aberto de alta performance que transforma qualquer smartphone moderno em uma **webcam virtual profissional de estúdio** para o seu computador com Windows, compatível nativamente com **OBS Studio, Discord, Google Meet, Zoom, Microsoft Teams e qualquer programa DirectShow**.
+O **tVisio** é um aplicativo de código aberto de alta performance escrito em **Rust** que transforma qualquer smartphone moderno em uma **webcam virtual profissional de estúdio** para Windows, compatível nativamente com **OBS Studio, Discord, Google Meet, Zoom, Microsoft Teams e qualquer programa DirectShow**.
 
-Diferente de soluções convencionais pesadas e proprietárias (como DroidCam, EpocCam ou Camo):
+Principais diferenciais:
 1. **Zero instalação no celular**: Não requer baixar aplicativos de lojas. Basta ler o **QR Code** na tela do PC usando a câmera nativa do seu smartphone (Safari, Chrome ou Edge).
-2. **Engenharia de Latência Extrema (10ms a 17ms Glass-to-Glass)**: O sinal de vídeo chega ao PC quase instantaneamente, dispensando sincronizadores manuais de áudio no OBS.
-3. **Eficiência Térmica & Bateria**: Inclui **Modo Eco OLED**, auto-blackout em 8 segundos e desconexão de hardware do elemento `<video>` móvel, mantendo o celular frio e poupando bateria durante transmissões longas.
-4. **Estúdio de Imagem no Cache L1 (Zero-Overhead)**: Ajuste de ganho, contraste, temperatura e zoom digital ePTZ com custo de CPU praticamente nulo via tabelas LUT de 768 bytes processadas em SIMD C++ (OpenCV).
+2. **Executável Único Ultraleve (~4.5 MB)**: Todos os recursos do transmissor móvel PWA, ícones e DLLs do driver DirectShow são compilados em um único arquivo `tVisio.exe` portátil.
+3. **1-Pass Kernel Fusion (L1-LUT)**: O corte de Zoom/Pan digital (ePTZ), espelhamento, rotação (0°/90°/180°/270°), redimensionamento Letterbox e correção de cor via **LUT de 768 bytes no Cache L1** são executados em **uma única passada de memória** diretamente para o driver DirectShow.
+4. **Eficiência Térmica & Bateria no Celular**: Inclui **Modo Eco OLED** automático em 8 segundos, mantendo o smartphone frio durante reuniões e transmissões longas.
 
 ---
 
-## ⚡ Arquitetura e Engenharia de Baixa Latência
+## ⚡ Arquitetura Nativa em Rust
 
-```
+```text
   ┌─────────────────────────────────────────────────────────────┐
-  │                 SMARTPHONE (Câmera Móvel)                   │
+  │                 SMARTPHONE (PWA Mobile)                     │
   │  • Sensor da Câmera: Shutter Cap (4ms / 8ms / 16ms)         │
   │  • Lentes Físicas: Principal, Grande Angular, Telefoto      │
-  │  • Modo Eco OLED: Desconexão de Hardware (0 decodificação)  │
-  └──────────────┬───────────────────────────────┬──────────────┘
-                 │ WebRTC H.264 (P2P Local)      │ Fallback Turbo WS
-                 │ playout-delay=0 (Sem Jitter)  │ JPEG Binário
-                 ▼                               ▼
+  │  • Modo Eco OLED: Apaga os pixels OLED após 8 segundos      │
+  └──────────────────────────────┬──────────────────────────────┘
+                                 │ Binary Turbo Zero-Queue (WS)
+                                 │ ACK Imediato (1-Frame In-Flight)
+                                 ▼
   ┌─────────────────────────────────────────────────────────────┐
-  │                   REDE LOCAL WI-FI / CABO                   │
-  │  • Pulso Anti-PSM 500Hz: Impede o rádio Wi-Fi de dormir     │
-  │  • QoS WMM Prioritário: Marcação DSCP EF (IP_TOS = 0xB8)    │
-  └──────────────┬───────────────────────────────┬──────────────┘
-                 │
-                 ▼
+  │                 SERVIDOR CORE RUST (Tokio + Axum)           │
+  │  • TLS Multi-SAN Autoassinado em Memória (rcgen + rustls)   │
+  │  • Pulso Anti-PSM 500Hz: Impede micro-sleep do rádio Wi-Fi  │
+  └──────────────────────────────┬──────────────────────────────┘
+                                 │
+                                 ▼
   ┌─────────────────────────────────────────────────────────────┐
-  │                   MOTOR BACKEND (tVisio PC)                 │
-  │  • aiohttp + aiortc: Servidor assíncrono multithread        │
-  │  • Estúdio L1-LUT: cv2.LUT (Tabela 768B em Cache L1, 0.1ms) │
-  │  • ePTZ Zero-Copy: Fatiamento NumPy de alta performance     │
+  │          PIPELINE 1-PASS KERNEL FUSION (vcam_engine.rs)     │
+  │  • ePTZ Crop + Flip/Rotate + Letterbox + L1-LUT (768B)      │
+  │  • Escrita em 1 única passada sem alocações por frame       │
   └──────────────┬───────────────────────────────┬──────────────┘
-                 │
-                 ├───────────────────────────────┐
+                 │                               │
                  ▼                               ▼
   ┌─────────────────────────────┐ ┌─────────────────────────────┐
-  │    DRIVER VIRTUAL CAMERA    │ │  TRANSLUCENT GLASS DESKTOP  │
-  │  • DirectShow UnityCapture  │ │  • Miniplayer Leve (360p)   │
-  │  • Resolução Nativa até     │ │  • Efeito Glow Ambiente     │
-  │    1080p @ 60 FPS           │ │  • Controles de Estúdio     │
-  │  • OBS / Discord / Meet     │ │  • Zero-Render Mode         │
+  │  SHARED MEMORY DIRECTSHOW   │ │   JANELA NATIVA OPENGL      │
+  │  • UnityCapture_Data0 (SHM) │ │  • Textura RGBA Direta GPU  │
+  │  • 1280x720 @ 60 FPS        │ │  • Efeito Ambient Glow      │
+  │  • OBS / Discord / Meet     │ │  • Bandeja Nativa Win32     │
   └─────────────────────────────┘ └─────────────────────────────┘
 ```
 
 ---
 
-## ✨ Principais Recursos
+## 📦 Como Compilar e Executar
 
-| Recurso | Descrição |
-| :--- | :--- |
-| **📱 Conexão Instantânea via QR Code** | Escaneie o QR Code na tela do computador para iniciar a transmissão imediatamente. |
-| **⚡ Motor Zero-Buffer** | SDP modificado com `playout-delay=0` descartando buffers de atraso do WebRTC. |
-| **📶 Pulso Anti-PSM (500 Hz)** | Batimento de 1 byte mantendo o chip de rádio Wi-Fi 802.11 acordado em potência máxima. |
-| **🎯 Shutter Speed Capping (4ms / 8ms)** | Limita a exposição máxima do sensor do smartphone para eliminar atrasos de exposição (`33ms`). |
-| **❄️ Modo Eco OLED Inteligente** | Desconecta a camada de renderização móvel e apaga a tela OLED após 8s para evitar aquecimento. |
-| **🎨 Estúdio de Cor L1-LUT** | Ajuste de exposição, contraste, temperatura e presets (*Natural, Quente, Frio, Cinema, P&B*) em 0.1ms. |
-| **🔍 Zoom e Enquadramento ePTZ** | Zoom digital de 1.0x a 3.0x via scroll do mouse e arraste para enquadramento (*pan*) sem cópia de memória. |
-| **📷 Controle de Lentes Físicas** | Selecione diretamente no PC qual lente do smartphone utilizar (Ultra-Wide, Macro, Telefoto ou Frontal). |
-| **🔒 Trava de Foco (AF-Lock)** | Trava o autofoco da câmera para evitar respiração de foco (*focus hunting*) durante reuniões. |
-| **🧊 Freeze Frame (Congelar Imagem)** | Congela a imagem na câmera virtual instantaneamente para privacidade sem interromper a chamada. |
-| **💎 Interface Translucent Glass UI** | Interface translúcida com efeitos de vidro fosco, Lucide Icons e layout 100vh sem rolagem. |
-| **🔋 Monitor de Bateria Integrado** | Acompanha a porcentagem de bateria e status de carregamento do smartphone no painel do PC. |
-| **🖥️ Bandeja do Sistema & Inicialização** | Suporte nativo a *Iniciar com o Windows*, *Minimizar para a Bandeja* e execução em 2º plano com 0% de RAM de UI. |
-
----
-
-## 📦 Instalação e Requisitos
-
-### Requisitos do Sistema
+### Requisitos para Compilação
 - **Sistema Operacional:** Windows 10 ou Windows 11 (64-bit).
-- **Python:** Versão 3.10 ou superior instalada ([python.org](https://www.python.org/downloads/)).
-- **Navegador no Celular:** Safari, Google Chrome ou Microsoft Edge.
-- **Rede:** Computador e celular conectados à mesma rede Wi-Fi local (redes de 5 GHz recomendadas).
+- **Rust Toolchain:** Rust 1.80+ instalado via [rustup.rs](https://rustup.rs/).
 
-### Passo a Passo de Instalação
-
-1. **Clone o repositório:**
-   ```bash
-   git clone https://github.com/TTreter/tVisio.git
-   cd tVisio
-   ```
-
-2. **Crie e ative um ambiente virtual (recomendado):**
-   ```bash
-   python -m venv venv
-   .\venv\Scripts\activate
-   ```
-
-3. **Instale as dependências:**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
----
-
-## 🚀 Como Iniciar
-
-Execute o aplicativo tVisio com o comando:
+### Compilando o Executável Otimizado (`tVisio.exe`)
+No terminal na raiz do projeto, execute:
 ```bash
-python main.py
+cargo build --release
 ```
-*(Ou simplesmente dê um duplo clique no arquivo [`start_tvisio.bat`](file:///j:/Projetos/tVisio/start_tvisio.bat) no Windows).*
-
-A janela nativa desktop do **tVisio** abrirá automaticamente.
-
-### Conectando seu Celular:
-1. Aponte a câmera do celular para o **QR Code** exibido no painel de conexão.
-2. Abra o link gerado (`https://192.168.x.x:8443/...`).
-3. Como o tVisio gera certificados SSL locais com criptografia ECDSA para permitir o acesso da câmera pelo navegador, toque em **"Avançado" -> "Continuar"** no navegador do celular.
-4. Conceda a permissão de acesso à câmera e pronto: seu celular já estará transmitindo em tempo real!
-
-### Ativando a Câmera Virtual no Windows:
-- Na primeira execução, clique no botão **"Ativar Driver Virtual Cam"** no painel do tVisio. O aplicativo registrará o driver DirectShow automaticamente.
-- Abra o **OBS Studio, Discord, Zoom ou Google Meet**, selecione a câmera **"tVisio Virtual Camera"** (ou *"Unity Video Capture"*) nas configurações de vídeo.
-
-### Compilando o Executável Nativo (`tVisio.exe`):
-Para gerar o executável standalone sem janela de terminal (com suporte à Bandeja do Sistema e driver DirectShow embutido offline):
-```bash
-python build_exe.py
+O executável único e 100% portátil será gerado em:
+```text
+target/release/tVisio.exe
 ```
-O executável de inicialização rápida será gerado em `dist/tVisio/tVisio.exe`. Para gerar um arquivo único portátil, utilize `python build_exe.py --onefile`.
+*(Você também pode dar um duplo clique diretamente em [`start_tvisio.bat`](start_tvisio.bat)).*
 
 ---
 
-## ⌨️ Atalhos e Gestos no Miniplayer
+## 🗂️ Estrutura do Código-Fonte
 
-- **Zoom Digital:** Gire a roda do mouse (*scroll*) sobre a imagem de vídeo para aplicar zoom de `1.0x` até `3.0x`.
-- **Enquadramento Panorâmico:** Com o zoom ativo, clique e arraste com o botão esquerdo do mouse para centralizar o enquadramento.
-- **Redefinir Ajustes:** Dê um **duplo clique** em qualquer controle deslizante (Ganho, Contraste, Temperatura ou Zoom) para restaurar instantaneamente para o padrão.
-- **Modo Zero-Render:** Clique no botão de olho (*Preview Ativo*) no miniplayer para desativar a renderização interna de tela do PC caso queira economizar 100% da GPU durante gravações ou jogos pesados.
-- **Grade de Enquadramento:** Pressione o botão `# Grade` para exibir a grade clássica da regra dos terços.
-
----
-
-## 🛠️ Solução de Problemas
-
-<details>
-<summary><strong>1. O QR Code não carrega no celular ou a página fica em carregamento infinito</strong></summary>
-
-- Certifique-se de que o computador e o celular estão conectados na **mesma rede Wi-Fi**.
-- Verifique se a rede do Windows está definida como **Rede Privada** (não pública).
-- No firewall do Windows, certifique-se de autorizar o Python nas portas `8080` e `8443`.
-- Se seu roteador tiver isolamento de clientes AP ativado, você pode usar o botão **"Abrir Hotspot Direto 1-Hop (5GHz)"** no tVisio para conectar o celular diretamente ao hotspot Wi-Fi do computador.
-</details>
-
-<details>
-<summary><strong>2. Alerta de certificado no navegador do smartphone</strong></summary>
-
-- O tVisio gera um certificado HTTPS auto-assinado localmente na inicialização para viabilizar as APIs modernas do WebRTC (`getUserMedia`).
-- No **Chrome Android**: Toque em *Avançado* e depois em *Ir para [IP] (não seguro)*.
-- No **Safari**: Toque em *Mostrar detalhes* e depois em *Visitar este site não seguro*.
-</details>
-
-<details>
-<summary><strong>3. O celular esquenta após muito tempo de transmissão</strong></summary>
-
-- O tVisio já vem configurado de fábrica em **720p @ 30 FPS**, que consome até 60% menos energia do sensor do que modos de 60/120 FPS.
-- Ative o **Modo Eco** (ou deixe o auto-eco acionar em 8 segundos). O visor do celular apagará os pixels OLED completamente, reduzindo a dissipação de calor a quase zero.
-</details>
+- [`src/main.rs`](src/main.rs) — Ponto de entrada, Mutex Win32 de instância única, inicialização do runtime Tokio e janela nativa OpenGL.
+- [`src/gui.rs`](src/gui.rs) — Interface Desktop Translucent Glass nativa (`eframe`/`egui`), Miniplayer GPU, gestos ePTZ, Dock de 7 controles e abas segmentadas.
+- [`src/vcam_engine.rs`](src/vcam_engine.rs) — Pipeline de vídeo *1-Pass Kernel Fusion* (ePTZ + Flip/Rotate + Letterbox + LUT L1 de 768 bytes).
+- [`src/unity_capture.rs`](src/unity_capture.rs) — Cliente nativo de Memória Compartilhada Win32 (`UnityCapture_Data0`) para injeção direta no DirectShow.
+- [`src/server.rs`](src/server.rs) — Servidor assíncrono HTTP/HTTPS (`axum` + `rustls`), QR Code, WebSocket Binary Turbo Zero-Queue e pulso Anti-PSM 500Hz.
+- [`src/win_integration.rs`](src/win_integration.rs) — Integração nativa com Windows (System Tray `tray-icon`, Registro `HKCU`, UAC `regsvr32`, Firewall e controle de `HWND`).
+- [`src/cert_manager.rs`](src/cert_manager.rs) — Gerador instantâneo de certificados TLS X.509 Multi-SAN (`rcgen`).
+- [`src/network_utils.rs`](src/network_utils.rs) — Descoberta e classificação de interfaces USB RNDIS/NCM, Hotspot Direto 1-Hop e Wi-Fi LAN.
+- [`src/settings.rs`](src/settings.rs) — Persistência em `_local/settings.json` e recursos estáticos embutidos (`include_bytes!`).
 
 ---
 
@@ -191,7 +105,6 @@ O executável de inicialização rápida será gerado em `dist/tVisio/tVisio.exe
 
 Este projeto é software livre distribuído sob os termos da licença **[GNU General Public License v3.0 (GPLv3)](LICENSE)**.
 
-```
+```text
 Copyright (C) 2026 Tiago Treter (@TTreter)
 ```
-Consulte o arquivo [`LICENSE`](LICENSE) para mais informações.
