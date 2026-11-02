@@ -1,8 +1,9 @@
 """
-tVisio — Automatic Multi-SAN TLS Certificate Generator
-Generates X.509 certificates covering all local IPs (LAN, Hotspot, USB) so mobile
-browsers (Safari iOS / Chrome Android) allow navigator.mediaDevices.getUserMedia().
-All temporary certificate files are stored in `_local/certs/`.
+tVisio — Gerador Automático de Certificados TLS Multi-SAN
+Gera certificados X.509 locais cobrindo todos os IPs ativos (Wi-Fi, Hotspot, USB e Localhost)
+para que navegadores móveis (Safari no iOS e Chrome no Android) autorizem
+o acesso à câmera (`navigator.mediaDevices.getUserMedia()`) sob HTTPS.
+Todos os arquivos temporários gerados são mantidos isolados em `_local/certs/`.
 """
 
 import datetime
@@ -17,9 +18,9 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 
 def ensure_ssl_certificates(ip_list: List[str], base_dir: Path) -> Tuple[Path, Path]:
     """
-    Generate a self-signed TLS certificate with SubjectAlternativeName (SAN)
-    for localhost, 127.0.0.1, and all active local IPv4 addresses.
-    Stored inside `_local/certs/`.
+    Gera um certificado TLS com extensões SubjectAlternativeName (SAN)
+    para localhost, 127.0.0.1 e todos os endereços IPv4 locais detectados.
+    Armazena a chave privada e o certificado na pasta `_local/certs/`.
     """
     cert_dir = base_dir / "_local" / "certs"
     cert_dir.mkdir(parents=True, exist_ok=True)
@@ -27,7 +28,7 @@ def ensure_ssl_certificates(ip_list: List[str], base_dir: Path) -> Tuple[Path, P
     cert_path = cert_dir / "tvisio_cert.pem"
     key_path = cert_dir / "tvisio_key.pem"
 
-    # Generate RSA-2048 private key
+    # Gera chave privada RSA de 2048 bits
     private_key = rsa.generate_private_key(
         public_exponent=65537,
         key_size=2048,
@@ -71,6 +72,7 @@ def ensure_ssl_certificates(ip_list: List[str], base_dir: Path) -> Tuple[Path, P
         .sign(private_key, hashes.SHA256())
     )
 
+    # Escreve a chave privada sem senha
     with open(key_path, "wb") as f:
         f.write(
             private_key.private_bytes(
@@ -80,6 +82,7 @@ def ensure_ssl_certificates(ip_list: List[str], base_dir: Path) -> Tuple[Path, P
             )
         )
 
+    # Escreve o certificado assinado
     with open(cert_path, "wb") as f:
         f.write(cert.public_bytes(serialization.Encoding.PEM))
 

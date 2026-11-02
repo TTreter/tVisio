@@ -1,13 +1,22 @@
 /**
- * tVisio Mobile Transmitter — Ultra-Cool & Low-Battery Edition
- * Thermal Optimizations:
- * 1. Exact FrameRate Capping (30 FPS default instead of 120Hz sensor overdrive -> -60% ISP heat).
- * 2. True Video Element Detach in Eco Mode (`videoEl.srcObject = null` while WebRTC streams directly from track).
- * 3. Auto-Eco OLED Screen Off after 8 seconds of inactivity (0 mW OLED backlight + 0 GPU repaints).
- * 4. Efficient 2.0 Mbps H.264 Hardware Bitrate & 2.5s Telemetry Interval (-65% Wi-Fi TX RF heat).
+ * tVisio — Transmissor Mobile (PWA de Ultra-Baixa Latência & Baixo Consumo Térmico)
+ * =============================================================================
+ * Gerencia a captura de vídeo no navegador do celular (Safari iOS, Chrome Android, Edge),
+ * negociação WebRTC P2P acelerada por hardware (H.264), controle do sensor da câmera
+ * (obturador manual, foco contínuo/travado, lanterna, seleção de lentes físicas),
+ * e proteções térmicas para evitar superaquecimento da bateria.
+ *
+ * Otimizações de Bateria e Temperatura:
+ * 1. Teto Estrito de Framerate: 30 FPS por padrão (evita que o ISP móvel ative modos de 120Hz a voltagens elevadas).
+ * 2. Desconexão Total do Elemento <video> no Modo Eco: `videoEl.srcObject = null` enquanto o WebRTC
+ *    continua transmitindo diretamente do track de mídia (0 decodificação na tela móvel).
+ * 3. Auto-Eco OLED Inteligente: desliga a tela após 8 segundos de inatividade para economizar energia da tela OLED.
+ * 4. Bitrate Otimizado: 2.0 Mbps H.264 para reduzir a dissipação de potência da antena transmissora Wi-Fi.
+ * =============================================================================
  */
 
 (() => {
+  // Elementos do DOM Mobile
   const videoEl = document.getElementById("cameraVideo");
   const capsuleDot = document.getElementById("capsuleDot");
   const capsuleStatus = document.getElementById("capsuleStatus");
@@ -15,8 +24,9 @@
   const ecoOverlay = document.getElementById("ecoOverlay");
   const mShutterText = document.getElementById("mShutterText");
 
+  // Estado da captura de vídeo
   let currentStream = null;
-  let facingMode = "environment";
+  let facingMode = "environment"; // Inicia pela câmera traseira (lente principal)
   let selectedDeviceId = "";
   let cameraList = [];
   let torchOn = false;
@@ -25,14 +35,16 @@
   let autoEcoTimer = null;
   let shutterCapMs = 8.0;
 
-  // Cool-Running Default: 720p @ 30 FPS (avoids 60/120Hz sensor voltage spike)
+  // Parâmetros padrão otimizados para evitar superaquecimento (720p @ 30 FPS)
   let targetWidth = 1280;
   let targetHeight = 720;
   let targetFps = 30;
 
+  // Monitoramento de bateria via Battery Status API
   let batteryLevel = null;
   let batteryCharging = false;
 
+  // Estado de rede (WebRTC e WebSocket)
   let ws = null;
   let pc = null;
   let webrtcConnected = false;
@@ -40,9 +52,13 @@
   let rttMs = 4.5;
   let frameInFlight = false;
 
+  // Canvas auxiliar para modo de fallback binário (quando WebRTC estiver negociando)
   const captureCanvas = document.createElement("canvas");
   const captureCtx = captureCanvas.getContext("2d", { alpha: false, desynchronized: true });
 
+  /**
+   * Mantém a tela acordada usando Screen Wake Lock API para evitar suspensão pelo SO.
+   */
   async function requestWakeLock() {
     if ("wakeLock" in navigator) {
       try {
@@ -51,6 +67,9 @@
     }
   }
 
+  /**
+   * Agenda a entrada automática no Modo Eco OLED após 8 segundos de inatividade.
+   */
   function scheduleAutoEco() {
     if (autoEcoTimer) clearTimeout(autoEcoTimer);
     if (!ecoMode) {
@@ -62,6 +81,9 @@
     }
   }
 
+  /**
+   * Inicializa o monitoramento de bateria do dispositivo.
+   */
   async function initBatteryMonitor() {
     if ("getBattery" in navigator) {
       try {
@@ -77,6 +99,9 @@
     }
   }
 
+  /**
+   * Identifica todas as lentes e câmeras físicas disponíveis no smartphone.
+   */
   async function discoverPhysicalCameras() {
     if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
     try {
@@ -97,12 +122,15 @@
     } catch (_) {}
   }
 
+  /**
+   * Inicia a captura da câmera utilizando MediaDevices.getUserMedia com restrições térmicas rigorosas.
+   */
   async function startCamera() {
     if (currentStream) {
       currentStream.getTracks().forEach((t) => t.stop());
     }
 
-    // Strict max: targetFps prevents smartphone ISP from entering 120Hz high-voltage mode!
+    // Teto rígido em targetFps: impede que o sensor opere a 60/120Hz desnecessariamente
     const videoConstraints = {
       width: { ideal: targetWidth },
       height: { ideal: targetHeight },
@@ -121,6 +149,7 @@
         video: videoConstraints,
       });
 
+      // Se não estiver no modo eco, renderiza no elemento de visualização móvel
       if (!ecoMode || !webrtcConnected) {
         videoEl.style.display = "block";
         videoEl.srcObject = currentStream;
@@ -132,6 +161,7 @@
       capsuleDot.classList.add("live");
       capsuleStatus.textContent = webrtcConnected ? "WebRTC Eco-Cool" : "tVisio Live";
 
+      // Se a conexão WebRTC já estiver ativa, atualiza a faixa de vídeo (replaceTrack)
       if (pc) {
         const videoTrack = currentStream.getVideoTracks()[0];
         const sender = pc.getSenders().find((s) => s.track && s.track.kind === "video");
@@ -150,10 +180,13 @@
         return startCamera();
       }
       capsuleStatus.textContent = "Permita o acesso à câmera";
-      console.error("Camera access error:", err);
+      console.error("Erro ao acessar câmera do smartphone:", err);
     }
   }
 
+  /**
+   * Configura parâmetros avançados do sensor óptico móvel (obturador, foco).
+   */
   async function applyOpticalSensorTuning() {
     if (!currentStream) return;
     const track = currentStream.getVideoTracks()[0];
@@ -163,6 +196,7 @@
       const caps = track.getCapabilities();
       const adv = {};
 
+      // Limita o tempo de exposição da lente para evitar motion blur excessivo
       if (caps.exposureMode && caps.exposureMode.includes("manual") && shutterCapMs < 30) {
         adv.exposureMode = "manual";
         if (caps.exposureTime) {
@@ -176,6 +210,7 @@
         adv.exposureMode = "continuous";
       }
 
+      // Trava de autofoco
       if (caps.focusMode) {
         if (afLocked && caps.focusMode.includes("manual")) {
           adv.focusMode = "manual";
@@ -190,6 +225,9 @@
     } catch (_) {}
   }
 
+  /**
+   * Alterna a trava do autofoco (AF-Lock).
+   */
   async function toggleAfLock(forceState) {
     afLocked = typeof forceState === "boolean" ? forceState : !afLocked;
     document.getElementById("mBtnAfLock").classList.toggle("active", afLocked);
@@ -197,6 +235,9 @@
     sendTelemetry();
   }
 
+  /**
+   * Alterna a lanterna traseira (Torch/Flash).
+   */
   async function toggleTorch(forceState) {
     if (!currentStream) return;
     const track = currentStream.getVideoTracks()[0];
@@ -214,9 +255,10 @@
   }
 
   /**
-   * True Hardware Video Detach in Eco Mode:
-   * Completely detaches `videoEl.srcObject` when WebRTC is active so the mobile browser
-   * shuts down local screen decoding/compositing 100% while WebRTC keeps streaming!
+   * Modo Eco OLED com Desconexão de Hardware:
+   * Remove o stream do elemento <video> local (`videoEl.srcObject = null`),
+   * permitindo que o navegador desligue completamente a GPU móvel enquanto o
+   * encoder WebRTC transmite o sinal diretamente para o PC.
    */
   async function toggleEcoMode(forceState) {
     ecoMode = typeof forceState === "boolean" ? forceState : !ecoMode;
@@ -242,6 +284,9 @@
     sendTelemetry();
   }
 
+  /**
+   * Aplica configurações de taxa de bits e prioridade no sender WebRTC.
+   */
   async function applySenderBitrate(sender) {
     if (!sender || !sender.getParameters || !sender.setParameters) return;
     try {
@@ -250,7 +295,7 @@
       if (params.encodings && params.encodings.length > 0) {
         params.encodings[0].priority = "high";
         params.encodings[0].networkPriority = "high";
-        // Thermal-friendly bitrate: 2.0 Mbps for 30fps, 3.2 Mbps for 60fps
+        // Taxa de bits moderada para menor dissipação de calor no transmissor de rádio Wi-Fi
         params.encodings[0].maxBitrate = targetFps <= 30 ? 2_000_000 : 3_200_000;
         params.encodings[0].maxFramerate = targetFps;
         await sender.setParameters(params);
@@ -258,11 +303,14 @@
     } catch (_) {}
   }
 
+  /**
+   * Inicia negociação WebRTC P2P com o backend local do tVisio via SDP Offer/Answer.
+   */
   async function startWebRTC() {
     if (!currentStream || typeof RTCPeerConnection === "undefined") return;
 
     try {
-      pc = new RTCPeerConnection({ iceServers: [] });
+      pc = new RTCPeerConnection({ iceServers: [] }); // P2P local puro, sem dependência de STUN na nuvem
       const videoTrack = currentStream.getVideoTracks()[0];
       if ("contentHint" in videoTrack) {
         videoTrack.contentHint = "motion";
@@ -308,10 +356,13 @@
         await pc.setRemoteDescription(new RTCSessionDescription(answer));
       }
     } catch (e) {
-      console.warn("WebRTC fallback to Binary Turbo WS:", e);
+      console.warn("Fallback WebRTC para Binary Turbo WebSocket:", e);
     }
   }
 
+  /**
+   * Conecta o canal de controle WebSocket bidirecional para comandos e telemetria.
+   */
   function connectWebSocket() {
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
     ws = new WebSocket(`${proto}//${location.host}/ws/stream`);
@@ -349,6 +400,9 @@
     };
   }
 
+  /**
+   * Processa comandos remotos enviados pelo painel desktop (Ex: troca de câmera, zoom, etc).
+   */
   function handleRemoteCommand(msg) {
     switch (msg.command) {
       case "switch_camera":
@@ -390,6 +444,9 @@
     }
   }
 
+  /**
+   * Envia pacote com dados de telemetria e estado para o painel de controle desktop.
+   */
   function sendTelemetry() {
     if (!ws || ws.readyState !== WebSocket.OPEN) return;
     const ua = navigator.userAgent;
@@ -416,6 +473,9 @@
     );
   }
 
+  /**
+   * Encerra loop de fallback JPEG caso WebRTC esteja ativo.
+   */
   function stopBinaryTurboLoop() {
     if (turboRafId !== null) {
       cancelAnimationFrame(turboRafId);
@@ -423,6 +483,9 @@
     }
   }
 
+  /**
+   * Loop de fallback em JPEG binário sobre WebSocket caso o WebRTC não consiga estabelecer rota P2P.
+   */
   function startBinaryTurboLoop() {
     stopBinaryTurboLoop();
     let lastFallbackTime = 0;
@@ -432,7 +495,7 @@
         return;
       }
 
-      // Cap fallback loop to 24fps so CPU never spikes while WebRTC is negotiating
+      // Limita o fallback a 24fps para não elevar o uso de CPU durante negociação WebRTC
       if (!frameInFlight && videoEl.readyState >= 2 && now - lastFallbackTime >= 41) {
         lastFallbackTime = now;
         const vw = videoEl.videoWidth || 1280;
@@ -468,7 +531,7 @@
     turboRafId = requestAnimationFrame(tick);
   }
 
-  // Relaxed 2.5s Telemetry/Ping Interval (70% fewer radio wakeups)
+  // Intervalo relaxado de ping/telemetria a cada 2.5s (reduz ciclos de rádio móvel)
   setInterval(() => {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: "ping", ts: performance.now() }));
@@ -476,7 +539,7 @@
     }
   }, 2500);
 
-  // Mobile UI Button Listeners
+  // --- Ouvintes de Eventos da Interface Mobile ---
   document.getElementById("mBtnSwitch").addEventListener("click", () => {
     scheduleAutoEco();
     if (cameraList.length > 1) {
@@ -518,7 +581,7 @@
     toggleEcoMode(false);
   });
 
-  // Boot sequence
+  // Sequência de inicialização
   requestWakeLock();
   initBatteryMonitor();
   startCamera();

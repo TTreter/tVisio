@@ -1,20 +1,35 @@
 /**
- * tVisio — Translucent Glass UI Controller, L1-LUT Color Studio & Zero-Copy ePTZ
+ * tVisio — Controlador da Interface Desktop (Translucent Glass UI)
+ * =============================================================================
+ * Gerencia a comunicação WebSocket com o backend, renderização do miniplayer
+ * de baixa latência em canvas acelerado, controles do Estúdio de Cor L1-LUT,
+ * sistema de zoom e enquadramento digital zero-copy (ePTZ), e telemetria em tempo real.
+ *
+ * Tecnologias:
+ * - Canvas 2D acelerado por hardware para preview do vídeo sem sobrecarga de DOM.
+ * - Suporte a Lucide Icons e estética Translucent Glass UI.
+ * - Controles de Estúdio (Ganho, Contraste, Temperatura de Cor, Shutter Cap).
+ * - Zoom óptico digital (ePTZ) via rolagem do mouse e arraste para enquadramento.
+ * - Reset de controles com duplo clique nos sliders.
+ * =============================================================================
  */
 
 (() => {
+  // Elementos do Canvas de Visualização e Efeito Ambiente
   const previewCanvas = document.getElementById("previewCanvas");
   const previewCtx = previewCanvas.getContext("2d", { alpha: false });
   const ambientCanvas = document.getElementById("ambientCanvas");
   const ambientCtx = ambientCanvas.getContext("2d", { alpha: false });
   const miniplayerStage = document.getElementById("miniplayerStage");
 
+  // Camadas de sobreposição (Overlays)
   const emptyOverlay = document.getElementById("emptyOverlay");
   const pausedOverlay = document.getElementById("pausedOverlay");
   const gridOverlay = document.getElementById("gridOverlay");
   const zoomBadge = document.getElementById("zoomBadge");
   const zoomBadgeText = document.getElementById("zoomBadgeText");
 
+  // Indicadores de Status e Telemetria
   const connectionBadge = document.getElementById("connectionBadge");
   const connectionText = document.getElementById("connectionText");
   const deviceSubtitle = document.getElementById("deviceSubtitle");
@@ -25,18 +40,21 @@
   const batteryRow = document.getElementById("batteryRow");
   const protocolTag = document.getElementById("protocolTag");
 
+  // Informações do Driver de Câmera Virtual (DirectShow)
   const vcamDot = document.getElementById("vcamDot");
   const vcamName = document.getElementById("vcamName");
   const vcamResolution = document.getElementById("vcamResolution");
   const btnInstallVcam = document.getElementById("btnInstallVcam");
   const btnInstallVcamText = document.getElementById("btnInstallVcamText");
 
+  // Elementos de Conexão e Rede
   const qrImage = document.getElementById("qrImage");
   const interfaceSelect = document.getElementById("interfaceSelect");
   const cameraDeviceSelect = document.getElementById("cameraDeviceSelect");
   const pairingUrlText = document.getElementById("pairingUrlText");
   const pairingUrlBox = document.getElementById("pairingUrlBox");
 
+  // Controles do Estúdio de Cor e Imagem
   const sliderGain = document.getElementById("sliderGain");
   const sliderContrast = document.getElementById("sliderContrast");
   const sliderTemp = document.getElementById("sliderTemp");
@@ -46,6 +64,7 @@
   const tempValText = document.getElementById("tempValText");
   const zoomValText = document.getElementById("zoomValText");
 
+  // Estado interno da aplicação desktop
   let ws = null;
   let previewEnabled = true;
   let ambientFrameSkip = 0;
@@ -53,7 +72,7 @@
   let currentCameras = [];
   let settingsSyncedOnce = false;
 
-  // Zero-Copy ePTZ state
+  // Estado do ePTZ (Zoom e Pan Zero-Copy)
   let currentZoom = 1.0;
   let panX = 0.0;
   let panY = 0.0;
@@ -61,7 +80,7 @@
   let dragStartX = 0;
   let dragStartY = 0;
 
-  // Sidebar Segmented Tabs Switcher
+  // Alternador de Abas da Barra Lateral (Segmented Tabs Switcher)
   document.querySelectorAll("#sidebarTabs .tab-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       document.querySelectorAll("#sidebarTabs .tab-btn").forEach((b) => b.classList.remove("active"));
@@ -72,6 +91,10 @@
     });
   });
 
+  /**
+   * Conecta o WebSocket do painel desktop para receber telemetria e frames de preview.
+   * Reconexão automática em caso de queda.
+   */
   function connectDesktopWS() {
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
     ws = new WebSocket(`${proto}//${location.host}/ws/desktop`);
@@ -79,11 +102,13 @@
 
     ws.onmessage = async (event) => {
       if (typeof event.data === "string") {
+        // Mensagem de controle ou telemetria em formato JSON
         const data = JSON.parse(event.data);
         if (data.type === "telemetry") {
           updateTelemetryUI(data);
         }
       } else if (event.data instanceof Blob && previewEnabled) {
+        // Frame de vídeo comprimido (JPEG ultraleve) para renderização no miniplayer
         try {
           const bitmap = await createImageBitmap(event.data);
           if (previewCanvas.width !== bitmap.width || previewCanvas.height !== bitmap.height) {
@@ -94,10 +119,12 @@
           }
           previewCtx.drawImage(bitmap, 0, 0);
 
+          // Efeito de brilho ambiente dinâmico (executado a cada 4 frames para poupar GPU)
           ambientFrameSkip = (ambientFrameSkip + 1) % 4;
           if (ambientFrameSkip === 0) {
             ambientCtx.drawImage(bitmap, 0, 0, 64, 36);
           }
+
           bitmap.close();
           emptyOverlay.classList.add("hidden");
         } catch (_) {}
@@ -105,16 +132,23 @@
     };
 
     ws.onclose = () => {
+      // Tentativa de reconexão automática
       setTimeout(connectDesktopWS, 1200);
     };
   }
 
+  /**
+   * Envia comando JSON para o backend via WebSocket.
+   */
   function sendCommand(payload) {
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(payload));
     }
   }
 
+  /**
+   * Atualiza os elementos da interface gráfica com base na telemetria mais recente do backend.
+   */
   function updateTelemetryUI(data) {
     const connected = data.mobile_connected;
     connectionBadge.classList.toggle("connected", connected);
@@ -127,6 +161,7 @@
       fpsValue.textContent = `${data.vcam.fps.toFixed(0)} FPS`;
       protocolTag.textContent = data.active_protocol;
 
+      // Nível de bateria do smartphone
       if (data.battery_level !== null && data.battery_level !== undefined) {
         batteryValue.textContent = `${data.battery_level}%`;
         batteryRow.style.color = data.battery_level <= 15 && !data.battery_charging ? "#EF4444" : "";
@@ -142,7 +177,7 @@
       emptyOverlay.classList.remove("hidden");
     }
 
-    // Update Virtual Camera Driver status
+    // Status do driver de Câmera Virtual DirectShow no Windows
     if (data.vcam.driver_active) {
       vcamDot.style.background = "#10B981";
       vcamDot.style.boxShadow = "0 0 10px #10B981";
@@ -156,7 +191,7 @@
       btnInstallVcam.style.display = "inline-flex";
     }
 
-    // Active states on dock buttons
+    // Atualiza estados ativos dos botões na barra flutuante (Dock)
     document.getElementById("btnTorch").classList.toggle("active", !!data.torch_on);
     document.getElementById("btnAfLock").classList.toggle("active", !!data.af_locked);
     document.getElementById("btnFreeze").classList.toggle("active", !!data.vcam.frozen);
@@ -164,7 +199,7 @@
     document.getElementById("btnMirrorH").classList.toggle("active", !!data.vcam.mirror_horizontal);
     document.getElementById("btnEcoMode").classList.toggle("active", !!data.eco_mode);
 
-    // Sync initial persisted sliders once on load
+    // Sincroniza valores persistidos na primeira carga
     if (!settingsSyncedOnce && data.vcam) {
       settingsSyncedOnce = true;
       sliderGain.value = data.vcam.brightness_gain;
@@ -183,7 +218,7 @@
       });
     }
 
-    // Populate physical cameras dropdown if changed
+    // Atualiza menu suspenso de lentes físicas se houver alteração
     if (data.cameras && JSON.stringify(data.cameras) !== JSON.stringify(currentCameras)) {
       currentCameras = data.cameras;
       cameraDeviceSelect.innerHTML = '<option value="">Lente Padrão (Auto)</option>';
@@ -196,7 +231,7 @@
       });
     }
 
-    // Populate network interfaces dropdown if changed
+    // Atualiza lista de interfaces de rede se houver alteração
     if (data.interfaces && JSON.stringify(data.interfaces) !== JSON.stringify(currentInterfaces)) {
       currentInterfaces = data.interfaces;
       interfaceSelect.innerHTML = "";
@@ -214,12 +249,18 @@
     }
   }
 
+  /**
+   * Formata texto amigável de temperatura de cor (-100 a +100).
+   */
   function formatTempLabel(val) {
     const num = Math.round(val * 100);
     if (num === 0) return "Neutro";
     return num > 0 ? `+${num} Quente` : `${num} Frio`;
   }
 
+  /**
+   * Atualiza a interface gráfica referente ao fator de zoom digital.
+   */
   function updateZoomUI(zoom) {
     currentZoom = Math.max(1.0, Math.min(3.0, zoom));
     sliderZoom.value = currentZoom;
@@ -228,40 +269,50 @@
     zoomBadge.classList.toggle("hidden", currentZoom <= 1.02);
   }
 
-  // Dock & Header Controls
+  // --- Controles da Barra Flutuante (Dock) e Cabeçalho ---
+
+  // Alternar entre câmera frontal e traseira
   document.getElementById("btnSwitchCam").addEventListener("click", () => {
     sendCommand({ action: "switch_camera" });
   });
 
+  // Trava de Autofoco (AF-Lock) para evitar hunting contínuo
   document.getElementById("btnAfLock").addEventListener("click", () => {
     sendCommand({ action: "toggle_af_lock" });
   });
 
+  // Lanterna / Flash do celular
   document.getElementById("btnTorch").addEventListener("click", () => {
     sendCommand({ action: "toggle_torch" });
   });
 
+  // Congelar imagem na Virtual Cam (Freeze Frame)
   document.getElementById("btnFreeze").addEventListener("click", () => {
     sendCommand({ action: "toggle_freeze" });
   });
 
+  // Espelhamento horizontal da imagem
   document.getElementById("btnMirrorH").addEventListener("click", () => {
     sendCommand({ action: "toggle_mirror_h" });
   });
 
+  // Rotação em passos de 90 graus
   document.getElementById("btnRotate").addEventListener("click", () => {
     sendCommand({ action: "rotate" });
   });
 
+  // Modo Eco / Blackout OLED no celular
   document.getElementById("btnEcoMode").addEventListener("click", () => {
     sendCommand({ action: "toggle_eco_mode" });
   });
 
+  // Grade de Enquadramento (Regra dos Terços)
   document.getElementById("btnToggleGrid").addEventListener("click", (e) => {
     gridOverlay.classList.toggle("hidden");
     e.currentTarget.classList.toggle("active", !gridOverlay.classList.contains("hidden"));
   });
 
+  // Alternar renderização do miniplayer (Modo Zero-Render para economia máxima de CPU desktop)
   document.getElementById("btnTogglePreview").addEventListener("click", () => {
     previewEnabled = !previewEnabled;
     sendCommand({ action: "set_miniplayer_enabled", enabled: previewEnabled });
@@ -271,16 +322,17 @@
     pausedOverlay.classList.toggle("hidden", previewEnabled);
   });
 
+  // Modo Picture-in-Picture (PiP)
   document.getElementById("btnPipMode").addEventListener("click", () => {
     document.getElementById("appShell").classList.toggle("pip-mode");
   });
 
-  // Physical Lens Selector
+  // Seletor de Lente Física
   cameraDeviceSelect.addEventListener("change", (e) => {
     sendCommand({ action: "select_camera_device", device_id: e.target.value });
   });
 
-  // Network & QR Controls
+  // --- Controles de Rede e QR Code ---
   interfaceSelect.addEventListener("change", (e) => {
     const ip = e.target.value;
     sendCommand({ action: "select_interface", ip });
@@ -308,6 +360,7 @@
     }, 1800);
   });
 
+  // Registro do Driver Virtual Cam DirectShow
   btnInstallVcam.addEventListener("click", async () => {
     btnInstallVcam.disabled = true;
     btnInstallVcamText.textContent = "Registrando Driver DirectShow...";
@@ -326,7 +379,7 @@
     }
   });
 
-  // Optical Shutter Speed Capping
+  // Limite de Velocidade do Obturador Óptico (Shutter Cap)
   document.querySelectorAll("#shutterSegment .seg-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       document.querySelectorAll("#shutterSegment .seg-btn").forEach((b) => b.classList.remove("active"));
@@ -336,7 +389,7 @@
     });
   });
 
-  // 1-Pass L1-Cache Color Studio Presets & Sliders (with Double-Click to Reset)
+  // Presets de Cor do Estúdio L1-Cache
   document.querySelectorAll("#presetSegment .seg-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       document.querySelectorAll("#presetSegment .seg-btn").forEach((b) => b.classList.remove("active"));
@@ -345,6 +398,7 @@
     });
   });
 
+  // Controles Deslizantes com Reset por Duplo Clique
   sliderGain.addEventListener("input", () => {
     const val = parseFloat(sliderGain.value);
     gainValText.textContent = `${val.toFixed(2)}x`;
@@ -378,7 +432,7 @@
     sendCommand({ action: "set_color_studio", color_temp: 0.0 });
   });
 
-  // Zero-Copy ePTZ Zoom & Mouse Wheel / Drag Pan on Miniplayer
+  // Controles de Zoom Digital (ePTZ) e Arraste Panorâmico no Miniplayer
   sliderZoom.addEventListener("input", () => {
     const z = parseFloat(sliderZoom.value);
     updateZoomUI(z);
@@ -398,6 +452,7 @@
     sendCommand({ action: "set_eptz", zoom_level: 1.0, pan_x: 0.0, pan_y: 0.0 });
   });
 
+  // Rolagem da roda do mouse sobre o miniplayer ajusta o zoom
   miniplayerStage.addEventListener(
     "wheel",
     (e) => {
@@ -409,6 +464,7 @@
     { passive: false }
   );
 
+  // Arraste com o botão esquerdo para enquadrar imagem com zoom
   miniplayerStage.addEventListener("mousedown", (e) => {
     if (e.target.closest(".floating-glass-dock") || currentZoom <= 1.02) return;
     isDraggingPan = true;
@@ -431,7 +487,7 @@
     isDraggingPan = false;
   });
 
-  // Reset Studio Button
+  // Botão de Redefinição Geral do Estúdio
   document.getElementById("btnResetStudio").addEventListener("click", () => {
     sliderGain.value = 1.0;
     sliderContrast.value = 1.0;
@@ -456,13 +512,16 @@
     sendCommand({ action: "set_eptz", zoom_level: 1.0, pan_x: 0.0, pan_y: 0.0 });
   });
 
+  // Alternar pulso Anti-PSM para Wi-Fi de baixa latência
   document.getElementById("chkAntiPsm").addEventListener("change", () => {
     sendCommand({ action: "toggle_anti_psm" });
   });
 
+  // Seleção de Perfil de Resolução e Taxa de Quadros
   document.getElementById("resolutionSelect").addEventListener("change", (e) => {
     sendCommand({ action: "set_resolution", profile: e.target.value });
   });
 
+  // Inicialização do WebSocket
   connectDesktopWS();
 })();

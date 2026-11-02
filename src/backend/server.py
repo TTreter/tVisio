@@ -1,11 +1,11 @@
 """
-tVisio — Ultra-Low Latency Core Server (WebRTC + Binary WS + Anti-PSM + L1-LUT Color Studio)
-Serves:
-- Mobile Transmitter WebApp over HTTPS (Port 8443) & HTTP (Port 8080 for USB localhost)
-- Desktop Liquid Glass App UI & Telemetry over HTTP/WS (Port 8080)
-- WebRTC SDP Signaling with H.264 Hardware Prioritization & `playout-delay=0`
-- Anti-PSM 100Hz Wi-Fi Keep-Alive pulse to prevent mobile radio micro-sleep
-- Persistent settings & fixed pairing token in `_local/settings.json`
+tVisio — Servidor Core de Ultra-Baixa Latência (WebRTC + Binary WS + Anti-PSM + Estúdio LUT L1)
+Serviços fornecidos:
+- WebApp transmissor móvel servido via HTTPS (Porta 8443) e HTTP (Porta 8080 para USB localhost)
+- Interface Desktop Translucent Glass e telemetria em tempo real via HTTP/WebSocket (Porta 8080)
+- Sinalização SDP WebRTC com priorização forçada de H.264 por hardware e extensão `playout-delay=0`
+- Pulso inteligente de Keep-Alive Anti-PSM para evitar micro-sleep do rádio Wi-Fi do smartphone
+- Gerenciamento de configurações persistentes e token de pareamento fixo em `_local/settings.json`
 """
 
 import asyncio
@@ -37,12 +37,14 @@ from .network_utils import discover_network_interfaces, tune_low_latency_socket
 from .settings_manager import SettingsManager
 from .vcam_engine import VirtualCamEngine, configure_tvisio_camera_name
 
+# Configuração de logging estruturado do sistema
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
 )
 logger = logging.getLogger("tVisio.Server")
 
+# Diretórios base de arquivos estáticos e recursos
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 DESKTOP_DIR = BASE_DIR / "src" / "desktop"
 MOBILE_DIR = BASE_DIR / "src" / "mobile"
@@ -51,11 +53,14 @@ ASSETS_DIR = BASE_DIR / "assets"
 
 def prioritize_h264_in_sdp(sdp: str) -> str:
     """
-    Reorders payload types on the `m=video` line so H264 hardware payloads appear
-    before VP8/VP9, and injects the `playout-delay=0` zero-buffer RTP extension.
+    Reordena os identificadores de payload na linha `m=video` do SDP para que
+    os payloads de H.264 acelerados por hardware apareçam antes de VP8/VP9.
+    Também injeta a extensão RTP `playout-delay=0` para desativar o jitter buffer.
     """
     lines = sdp.splitlines()
     h264_pts: List[str] = []
+
+    # Localiza quais payloads numéricos correspondem ao codec H264
     for line in lines:
         if line.startswith("a=rtpmap:") and "H264/90000" in line.upper():
             pt = line.split(":")[1].split(" ")[0]
@@ -68,9 +73,11 @@ def prioritize_h264_in_sdp(sdp: str) -> str:
             if len(parts) > 3:
                 header = parts[:3]
                 pts = parts[3:]
+                # Reorganiza os payloads colocando H.264 no topo da preferência
                 prioritized = [p for p in pts if p in h264_pts] + [p for p in pts if p not in h264_pts]
                 line = " ".join(header + prioritized)
             out_lines.append(line)
+            # Injeta a extensão de cabeçalho RTP playout-delay=0 (min=0, max=0)
             out_lines.append("a=extmap:14 http://www.webrtc.org/experiments/rtp-hdrext/playout-delay")
         else:
             out_lines.append(line)
@@ -78,13 +85,21 @@ def prioritize_h264_in_sdp(sdp: str) -> str:
 
 
 class TVisioServer:
+    """
+    Servidor assíncrono principal do tVisio baseado em aiohttp.
+    Gerencia a comunicação bidirecional com o app desktop e o cliente móvel.
+    """
+
     def __init__(self, http_port: int = 8080, https_port: int = 8443) -> None:
         self.http_port = http_port
         self.https_port = https_port
+
+        # Carrega configurações salvas ou inicializa valores padrão com token fixo
         self.settings = SettingsManager(BASE_DIR)
         self.session_token = self.settings.data["session_token"]
         self.vcam = VirtualCamEngine(initial_settings=self.settings.data)
 
+        # Descobre as interfaces de rede ativas (USB, Hotspot 1-Hop, Wi-Fi LAN)
         self.interfaces = discover_network_interfaces(self.https_port)
         self.selected_interface = self.interfaces[0] if self.interfaces else {
             "ip": "127.0.0.1",
@@ -93,15 +108,15 @@ class TVisioServer:
             "url": f"https://127.0.0.1:{self.https_port}"
         }
 
-        # Active connections
+        # Conjuntos de conexões WebSocket e instâncias WebRTC ativas
         self.desktop_ws_clients: Set[web.WebSocketResponse] = set()
         self.mobile_ws_clients: Set[web.WebSocketResponse] = set()
         self.pcs: Set[Any] = set()
 
-        # Live Telemetry State
+        # Estado da telemetria em tempo real
         self.mobile_connected: bool = False
         self.active_protocol: str = "Standby"
-        self.anti_psm_enabled: bool = bool(self.settings.data.get("anti_psm_enabled", True))
+        self.anti_psm_enabled: bool = bool(self.settings.data.get("anti_psm_enabled", False))
         self.shutter_cap_ms: float = float(self.settings.data.get("shutter_cap_ms", 8.0))
         self.rtt_ms: float = 0.0
         self.glass_to_glass_ms: float = 0.0
@@ -116,11 +131,12 @@ class TVisioServer:
         self.mobile_battery_charging: bool = False
 
     def get_pairing_url(self, ip: Optional[str] = None) -> str:
+        """Gera o link completo de pareamento contendo o IP e o token de sessão."""
         target_ip = ip or self.selected_interface["ip"]
         return f"https://{target_ip}:{self.https_port}/?t={self.session_token}"
 
     async def broadcast_telemetry(self) -> None:
-        """Broadcast live telemetry to all Desktop UI WebSockets every 250ms."""
+        """Transmite as métricas de telemetria a cada 250ms para as janelas Desktop conectadas."""
         while True:
             try:
                 if self.desktop_ws_clients:
@@ -156,14 +172,14 @@ class TVisioServer:
                     for ws in dead:
                         self.desktop_ws_clients.discard(ws)
             except Exception as e:
-                logger.debug(f"Telemetry broadcast error: {e}")
+                logger.debug(f"Erro no envio de telemetria: {e}")
             await asyncio.sleep(0.25)
 
     async def anti_psm_heartbeat_loop(self) -> None:
         """
-        Smart Anti-PSM Micro-Pulse Generator.
-        Only sends keep-alive pulses when WebRTC UDP stream is NOT active (since WebRTC RTP
-        already paces the radio without forcing mobile TCP ACK replies that heat the Wi-Fi chip).
+        Gerador inteligente de micro-pulsos Anti-PSM.
+        Envia um pulso binário de 1 byte (0x01) para clientes conectados apenas em modo fallback WebSocket,
+        evitando micro-sleep de economia de energia no Wi-Fi sem sobreaquecer o chip em WebRTC.
         """
         pulse_packet = b"\x01"
         while True:
@@ -179,7 +195,7 @@ class TVisioServer:
                 await asyncio.sleep(0.1)
 
     async def push_miniplayer_preview(self, preview_jpeg: Optional[bytes]) -> None:
-        """Send low-res (360p) JPEG frame to Desktop Miniplayer clients."""
+        """Envia o quadro JPEG de baixa resolução (360p) para os Miniplayers ativos no Desktop."""
         if not preview_jpeg or not self.desktop_ws_clients:
             return
         for ws in list(self.desktop_ws_clients):
@@ -190,9 +206,10 @@ class TVisioServer:
                     pass
 
     # -------------------------------------------------------------------------
-    # HTTP Routes
+    # Rotas HTTP
     # -------------------------------------------------------------------------
     async def handle_mobile_index(self, request: web.Request) -> web.Response:
+        """Entrega o WebApp do smartphone com redirecionamento automático para HTTPS quando necessário."""
         host_header = request.headers.get("Host", "")
         hostname = host_header.split(":")[0] if host_header else ""
         if not request.secure and hostname not in ("localhost", "127.0.0.1"):
@@ -201,21 +218,24 @@ class TVisioServer:
         return web.FileResponse(MOBILE_DIR / "index.html")
 
     async def handle_manifest_json(self, request: web.Request) -> web.Response:
+        """Entrega o manifesto PWA para permitir adicionar o app à tela inicial do celular com token fixo."""
         manifest = {
             "name": "tVisio Camera Transmitter",
             "short_name": "tVisio",
             "start_url": f"/?t={self.session_token}",
             "display": "standalone",
             "background_color": "#000000",
-            "theme_color": "#04091A",
+            "theme_color": "#030712",
             "icons": [{"src": "/assets/icon.png", "sizes": "1024x1024", "type": "image/png"}],
         }
         return web.json_response(manifest)
 
     async def handle_desktop_index(self, request: web.Request) -> web.Response:
+        """Entrega a interface desktop Translucent Glass."""
         return web.FileResponse(DESKTOP_DIR / "index.html")
 
     async def handle_qr_svg(self, request: web.Request) -> web.Response:
+        """Gera e retorna a imagem PNG do QR Code estilizado para conexão instantânea."""
         ip = request.query.get("ip", self.selected_interface["ip"])
         for iface in self.interfaces:
             if iface["ip"] == ip:
@@ -231,25 +251,26 @@ class TVisioServer:
         )
         qr.add_data(url)
         qr.make(fit=True)
-        img = qr.make_image(fill_color="#00F0FF", back_color="#050C24").convert("RGBA")
+        img = qr.make_image(fill_color="#00F0FF", back_color="#040A1C").convert("RGBA")
 
         buf = io.BytesIO()
         img.save(buf, format="PNG")
         return web.Response(body=buf.getvalue(), content_type="image/png")
 
     async def handle_cert_download(self, request: web.Request) -> web.Response:
+        """Permite o download do certificado raiz local caso necessário em redes isoladas."""
         cert_path = BASE_DIR / "_local" / "certs" / "tvisio_cert.pem"
         if cert_path.exists():
             return web.FileResponse(
                 cert_path,
                 headers={"Content-Disposition": 'attachment; filename="tVisio-Local-CA.crt"'},
             )
-        return web.Response(status=404, text="Certificate not found")
+        return web.Response(status=404, text="Certificado não encontrado")
 
     async def handle_install_vcam_driver(self, request: web.Request) -> web.Response:
         """
-        One-Click Automatic Installer for the open-source UnityCapture DirectShow Virtual Camera filter.
-        Downloads 64-bit and 32-bit DLLs to `_local/driver/` and registers `tVisio Virtual Camera` via regsvr32.
+        Instalador automático em 1 clique para o filtro DirectShow UnityCapture (código aberto).
+        Baixa os binários de 64-bit e 32-bit para `_local/driver/` e registra no Windows via regsvr32.
         """
         try:
             driver_dir = BASE_DIR / "_local" / "driver"
@@ -273,6 +294,7 @@ class TVisioServer:
 
             configure_tvisio_camera_name()
 
+            # Executa o regsvr32 solicitando elevação de privilégios via UAC
             ps_script = (
                 f"Start-Process -FilePath 'regsvr32.exe' "
                 f"-ArgumentList '/s', '\"{dll64_path}\"', '\"{dll32_path}\"' "
@@ -292,11 +314,11 @@ class TVisioServer:
                 "backend_name": self.vcam.backend_name,
             })
         except Exception as e:
-            logger.error(f"Error installing Virtual Camera driver: {e}")
+            logger.error(f"Erro ao registrar driver de câmera virtual: {e}")
             return web.json_response({"ok": False, "error": str(e)}, status=500)
 
     async def handle_hotspot_guide(self, request: web.Request) -> web.Response:
-        """Opens Windows Mobile Hotspot settings directly for 1-Hop Direct Wi-Fi."""
+        """Abre as configurações nativas do Windows Mobile Hotspot para conexão direta de 1 salto."""
         try:
             subprocess.Popen(["cmd", "/c", "start", "ms-settings:network-mobilehotspot"], shell=True)
             await asyncio.sleep(1.5)
@@ -306,18 +328,18 @@ class TVisioServer:
             return web.json_response({"ok": False, "error": str(e)}, status=500)
 
     # -------------------------------------------------------------------------
-    # WebRTC Zero-Latency Signaling & Track Consumer
+    # Sinalização WebRTC e Consumo de Faixas de Vídeo
     # -------------------------------------------------------------------------
     async def handle_webrtc_offer(self, request: web.Request) -> web.Response:
+        """Recebe o SDP Offer do smartphone e responde com o SDP Answer priorizado em H.264."""
         if not HAS_WEBRTC:
-            return web.json_response({"error": "aiortc not available"}, status=501)
+            return web.json_response({"error": "aiortc não disponível neste ambiente"}, status=501)
 
         params = await request.json()
-        # Reorder incoming SDP offer so H264 hardware codec is prioritized over VP8
         prioritized_offer_sdp = prioritize_h264_in_sdp(params["sdp"])
         offer = RTCSessionDescription(sdp=prioritized_offer_sdp, type=params["type"])
 
-        # Close any stale PeerConnections to free FFmpeg decoder memory immediately
+        # Fecha conexões antigas para liberar imediatamente os decodificadores da GPU/CPU
         for old_pc in list(self.pcs):
             self.pcs.discard(old_pc)
             try:
@@ -330,7 +352,7 @@ class TVisioServer:
 
         @pc.on("connectionstatechange")
         async def on_connectionstatechange() -> None:
-            logger.info(f"WebRTC state: {pc.connectionState}")
+            logger.info(f"Estado WebRTC: {pc.connectionState}")
             if pc.connectionState in ("connected", "completed"):
                 self.mobile_connected = True
                 self.active_protocol = "WebRTC Zero-Buffer (H.264 UDP)"
@@ -347,7 +369,7 @@ class TVisioServer:
         @pc.on("track")
         def on_track(track: Any) -> None:
             if track.kind == "video":
-                logger.info("WebRTC Video Track received — starting Zero-Buffer consumer")
+                logger.info("Faixa de vídeo WebRTC recebida — iniciando consumidor Zero-Buffer")
                 self.mobile_connected = True
                 self.active_protocol = "WebRTC Zero-Buffer (H.264 UDP)"
                 asyncio.ensure_future(self._consume_webrtc_video(track))
@@ -364,15 +386,15 @@ class TVisioServer:
 
     async def _consume_webrtc_video(self, track: Any) -> None:
         """
-        Consumes decoded frames from WebRTC video track with strict Zero-Queue draining.
-        Any intermediate frames waiting in aiortc's internal `_queue` are immediately
-        discarded so only the single newest frame is processed (0 accumulated lag & 0 RAM leak).
+        Consome quadros da faixa de vídeo WebRTC com esvaziamento imediato da fila interna (Zero-Queue).
+        Garante que apenas o quadro mais recente seja processado, eliminando lag acumulado e vazamento de RAM.
         """
         try:
             while True:
                 t_start = time.perf_counter()
                 frame = await track.recv()
 
+                # Drena quadros intermediários acumulados na fila interna do aiortc
                 q = getattr(track, "_queue", None)
                 if q is not None:
                     while not q.empty():
@@ -383,6 +405,7 @@ class TVisioServer:
                         except Exception:
                             break
 
+                # No modo de congelamento de quadro (privacidade), consome sem decodificar novo conteúdo
                 if self.vcam.frozen:
                     del frame
                     self.vcam.process_and_push_bgr(np.empty((1, 1, 3), dtype=np.uint8))
@@ -392,6 +415,7 @@ class TVisioServer:
                 bgr = frame.to_ndarray(format="bgr24")
                 del frame
 
+                # Alimenta o motor de webcam virtual e obtém o preview do miniplayer
                 preview_jpeg = self.vcam.process_and_push_bgr(bgr)
                 del bgr
 
@@ -402,15 +426,17 @@ class TVisioServer:
                 self.glass_to_glass_ms = max(8.5, (self.rtt_ms * 0.5) + 6.5 + min(decode_elapsed, 6.0))
                 await asyncio.sleep(0)
         except Exception as e:
-            logger.info(f"WebRTC track ended: {e}")
+            logger.info(f"Faixa de vídeo WebRTC encerrada: {e}")
 
     # -------------------------------------------------------------------------
-    # WebSocket: Mobile Stream & Control Channel (/ws/stream)
+    # WebSocket: Canal de Fluxo Binário e Controle do Smartphone (/ws/stream)
     # -------------------------------------------------------------------------
     async def handle_mobile_ws(self, request: web.Request) -> web.WebSocketResponse:
+        """Gerencia o canal WebSocket do celular para comandos, telemetria e fallback binário de vídeo."""
         ws = web.WebSocketResponse(max_msg_size=16 * 1024 * 1024, heartbeat=15.0)
         await ws.prepare(request)
 
+        # Aplica TCP_NODELAY e marcação de hardware DSCP EF no socket subjacente
         transport = request.transport
         if transport is not None:
             raw_sock = transport.get_extra_info("socket")
@@ -422,12 +448,13 @@ class TVisioServer:
         if self.active_protocol == "Standby":
             self.active_protocol = "WebSocket Binary Turbo (TCP_NODELAY)"
 
-        logger.info("Mobile transmitter connected via WebSocket")
+        logger.info("Transmissor móvel conectado via WebSocket")
 
         try:
             async for msg in ws:
                 if msg.type == aiohttp.WSMsgType.BINARY:
                     data = msg.data
+                    # Cabeçalho binário de 8 bytes contendo o timestamp (float64 em milissegundos)
                     if len(data) > 8:
                         client_ts = struct.unpack("<d", data[:8])[0]
                         jpeg_bytes = data[8:]
@@ -467,7 +494,7 @@ class TVisioServer:
                             self.mobile_battery_level = int(info["battery_level"])
                             self.mobile_battery_charging = bool(info.get("battery_charging", False))
         except Exception as e:
-            logger.debug(f"Mobile WS disconnected: {e}")
+            logger.debug(f"WebSocket móvel desconectado: {e}")
         finally:
             self.mobile_ws_clients.discard(ws)
             if not self.mobile_ws_clients and not self.pcs:
@@ -476,9 +503,10 @@ class TVisioServer:
         return ws
 
     # -------------------------------------------------------------------------
-    # WebSocket: Desktop Liquid Glass UI & Miniplayer (/ws/desktop)
+    # WebSocket: Interface Desktop e Miniplayer (/ws/desktop)
     # -------------------------------------------------------------------------
     async def handle_desktop_ws(self, request: web.Request) -> web.WebSocketResponse:
+        """Gerencia os comandos da interface desktop e a sincronização de controles de imagem/câmera."""
         ws = web.WebSocketResponse(max_msg_size=8 * 1024 * 1024)
         await ws.prepare(request)
         self.desktop_ws_clients.add(ws)
@@ -489,7 +517,7 @@ class TVisioServer:
                     cmd = json.loads(msg.data)
                     action = cmd.get("action")
 
-                    # PC-side zero-cost image transforms, L1-LUT Color Studio & ePTZ
+                    # Transformações geométricas no PC com persistência automática
                     if action == "toggle_mirror_h":
                         self.vcam.mirror_horizontal = not self.vcam.mirror_horizontal
                         self.settings.update(mirror_horizontal=self.vcam.mirror_horizontal)
@@ -501,6 +529,8 @@ class TVisioServer:
                         self.settings.update(rotation=self.vcam.rotation)
                     elif action == "toggle_freeze":
                         self.vcam.frozen = not self.vcam.frozen
+
+                    # Controles do Estúdio de Cor em 1 Passada (LUT no Cache L1)
                     elif action == "set_brightness":
                         self.vcam.brightness_gain = float(cmd.get("value", 1.0))
                         self.vcam.rebuild_color_lut()
@@ -524,6 +554,8 @@ class TVisioServer:
                             color_temp=self.vcam.color_temp,
                             color_preset=self.vcam.color_preset,
                         )
+
+                    # Zoom e Pan Digital Zero-Copy (ePTZ)
                     elif action == "set_eptz":
                         if "zoom_level" in cmd:
                             self.vcam.zoom_level = max(1.0, min(3.0, float(cmd["zoom_level"])))
@@ -536,6 +568,8 @@ class TVisioServer:
                             pan_x=self.vcam.pan_x,
                             pan_y=self.vcam.pan_y,
                         )
+
+                    # Controles de desempenho e rede
                     elif action == "set_miniplayer_enabled":
                         self.vcam.miniplayer_enabled = bool(cmd.get("enabled", True))
                     elif action == "toggle_anti_psm":
@@ -550,7 +584,7 @@ class TVisioServer:
                     elif action == "refresh_interfaces":
                         self.interfaces = discover_network_interfaces(self.https_port)
 
-                    # Remote Mobile ISP Hardware Camera Commands (forwarded instantly to smartphone)
+                    # Comandos remotos direcionados ao hardware da câmera móvel
                     elif action in (
                         "switch_camera",
                         "select_camera_device",
@@ -573,6 +607,7 @@ class TVisioServer:
         return ws
 
     def create_app(self) -> web.Application:
+        """Cria e configura o roteador web da aplicação aiohttp."""
         app = web.Application()
         app.router.add_get("/", self.handle_mobile_index)
         app.router.add_get("/manifest.json", self.handle_manifest_json)
@@ -585,6 +620,7 @@ class TVisioServer:
         app.router.add_get("/ws/stream", self.handle_mobile_ws)
         app.router.add_get("/ws/desktop", self.handle_desktop_ws)
 
+        # Rotas para entrega de arquivos estáticos
         app.router.add_static("/assets", ASSETS_DIR)
         app.router.add_static("/desktop-static", DESKTOP_DIR)
         app.router.add_static("/mobile-static", MOBILE_DIR)
@@ -592,9 +628,11 @@ class TVisioServer:
 
 
 async def run_servers(http_port: int = 8080, https_port: int = 8443) -> None:
+    """Inicia os servidores HTTP e HTTPS e executa as tarefas assíncronas em segundo plano."""
     tvisio = TVisioServer(http_port=http_port, https_port=https_port)
     app = tvisio.create_app()
 
+    # Gera e garante os certificados SSL cobrindo todos os IPs locais
     ip_list = [iface["ip"] for iface in tvisio.interfaces]
     cert_path, key_path = ensure_ssl_certificates(ip_list, BASE_DIR)
 
@@ -604,15 +642,18 @@ async def run_servers(http_port: int = 8080, https_port: int = 8443) -> None:
     runner = web.AppRunner(app, access_log=None)
     await runner.setup()
 
+    # 1. Servidor HTTP (Interface Desktop e USB Localhost)
     http_site = web.TCPSite(runner, "0.0.0.0", http_port)
     await http_site.start()
 
+    # 2. Servidor HTTPS (Para acesso à câmera no Safari iOS / Chrome Android)
     https_site = web.TCPSite(runner, "0.0.0.0", https_port, ssl_context=ssl_ctx)
     await https_site.start()
 
-    logger.info(f"tVisio Desktop UI active at: http://127.0.0.1:{http_port}/desktop")
-    logger.info(f"tVisio Mobile Pairing URL:   {tvisio.get_pairing_url()}")
+    logger.info(f"Interface Desktop tVisio ativa em: http://127.0.0.1:{http_port}/desktop")
+    logger.info(f"URL de pareamento para celular:    {tvisio.get_pairing_url()}")
 
+    # Inicializa loops em segundo plano
     asyncio.create_task(tvisio.broadcast_telemetry())
     asyncio.create_task(tvisio.anti_psm_heartbeat_loop())
 

@@ -1,9 +1,10 @@
 """
-tVisio — Virtual Camera Engine, L1-Cache Color LUT Studio & Zero-Copy ePTZ
-- Zero-Copy ePTZ (Zoom & Pan via NumPy pointer slicing: 0.0ms overhead, reduces pixel count).
-- 1-Pass Pre-computed Color Lookup Table (`cv2.LUT` 768-byte array in CPU L1 cache: ~0.12ms).
-- Zero-Allocation Resize (`dst=` direct write into pre-allocated `_vcam_canvas`).
-- Instant Freeze Frame (Privacy Pause with 0% CPU decode overhead).
+tVisio — Motor de Webcam Virtual, Estúdio de Cor LUT L1 e Zoom/Pan Zero-Copy (ePTZ)
+Principais capacidades:
+- ePTZ Zero-Copy (Zoom e Pan digital via fatiamento de ponteiros NumPy: custo computacional negativo).
+- Tabela de Consulta de Cores pré-calculada de 1 passada (`cv2.LUT` de 768 bytes residente no Cache L1 da CPU: ~0.12ms).
+- Redimensionamento sem alocação de memória (`dst=` escrita direta na região pré-alocada do buffer DirectShow).
+- Modo de congelamento instantâneo de quadro (Pausa de privacidade com 0% de uso de CPU).
 """
 
 import time
@@ -24,8 +25,9 @@ logger = logging.getLogger("tVisio.VCam")
 
 def configure_tvisio_camera_name() -> None:
     """
-    Configure UnityCapture registry key under HKCU so the DirectShow device
-    appears as 'tVisio Virtual Camera' in Discord, OBS, Zoom, and Meet.
+    Configura as chaves de registro do UnityCapture no Windows (HKCU)
+    para que o dispositivo DirectShow apareça como 'tVisio Virtual Camera'
+    no Discord, OBS Studio, Google Meet, Zoom e Microsoft Teams.
     """
     try:
         key_path = r"Software\UnityCapture\Device 0"
@@ -35,15 +37,21 @@ def configure_tvisio_camera_name() -> None:
             winreg.SetValueEx(key, "ResizeMode", 0, winreg.REG_DWORD, 1)
             winreg.SetValueEx(key, "MirrorMode", 0, winreg.REG_DWORD, 0)
     except Exception as e:
-        logger.debug(f"Registry configuration skipped: {e}")
+        logger.debug(f"Configuração do registro ignorada: {e}")
 
 
 class VirtualCamEngine:
+    """
+    Controlador do pipeline de pós-processamento e injeção de vídeo na webcam virtual.
+    Projetado para operar com latência sub-milissegundo e zero vazamentos de memória.
+    """
+
     def __init__(self, initial_settings: Optional[Dict[str, Any]] = None) -> None:
         configure_tvisio_camera_name()
         s = initial_settings or {}
 
         self.cam: Optional[Any] = None
+        # Resolução fixa do driver DirectShow para evitar re-inicializações e travamentos em chamadas
         self.width: int = 1280
         self.height: int = 720
         self.input_width: int = 0
@@ -53,40 +61,41 @@ class VirtualCamEngine:
         self.driver_active: bool = False
         self.driver_error: str = ""
 
-        # Geometric & Zero-Copy ePTZ Controls
+        # Controles geométricos e de enquadramento digital Zero-Copy (ePTZ)
         self.mirror_horizontal: bool = bool(s.get("mirror_horizontal", False))
         self.mirror_vertical: bool = bool(s.get("mirror_vertical", False))
         self.rotation: int = int(s.get("rotation", 0))
-        self.zoom_level: float = float(s.get("zoom_level", 1.0))  # 1.0x to 3.0x
-        self.pan_x: float = float(s.get("pan_x", 0.0))  # -1.0 to +1.0
-        self.pan_y: float = float(s.get("pan_y", 0.0))  # -1.0 to +1.0
+        self.zoom_level: float = float(s.get("zoom_level", 1.0))  # 1.0x até 3.0x
+        self.pan_x: float = float(s.get("pan_x", 0.0))  # -1.0 a +1.0
+        self.pan_y: float = float(s.get("pan_y", 0.0))  # -1.0 a +1.0
 
-        # 1-Pass L1-Cache Color Studio Controls
+        # Controles do Estúdio de Cor em 1 Passada (LUT no Cache L1)
         self.brightness_gain: float = float(s.get("brightness_gain", 1.0))
         self.contrast: float = float(s.get("contrast", 1.0))
         self.gamma: float = float(s.get("gamma", 1.0))
-        self.color_temp: float = float(s.get("color_temp", 0.0))  # -1.0 (Cool) to +1.0 (Warm)
-        self.color_preset: str = str(s.get("color_preset", "natural"))  # natural, warm, cool, cinema, bw
+        self.color_temp: float = float(s.get("color_temp", 0.0))  # -1.0 (Frio) até +1.0 (Quente)
+        self.color_preset: str = str(s.get("color_preset", "natural"))
 
+        # Tabela LUT unificada de 768 bytes (1 x 256 x 3 uint8)
         self._color_lut: np.ndarray = np.zeros((1, 256, 3), dtype=np.uint8)
         self._lut_is_identity: bool = True
         self.rebuild_color_lut()
 
-        # Freeze Frame / Privacy Pause State
+        # Estado do modo de congelamento de quadro (Privacidade)
         self.frozen: bool = False
         self._frozen_vcam_frame: Optional[np.ndarray] = None
 
-        # Miniplayer State (Decoupled low-res 360p stream)
+        # Estado do Miniplayer (Fluxo desacoplado de baixa resolução a 360p)
         self.miniplayer_enabled: bool = True
         self.miniplayer_max_fps: float = 28.0
         self._last_miniplayer_time: float = 0.0
         self.latest_miniplayer_jpeg: Optional[bytes] = None
 
-        # Pre-allocated black canvas for zero-allocation resize & letterboxing
+        # Canvas pré-alocado na memória para redimensionamento e letterboxing sem alocações dinâmicas
         self._vcam_canvas: np.ndarray = np.zeros((self.height, self.width, 3), dtype=np.uint8)
         self._last_fit_dims: tuple = (0, 0)
 
-        # Telemetry metrics
+        # Métricas de telemetria e taxa de quadros
         self.frames_received: int = 0
         self.current_fps: float = 0.0
         self._fps_counter: int = 0
@@ -95,15 +104,16 @@ class VirtualCamEngine:
 
     def rebuild_color_lut(self) -> None:
         """
-        Pre-computes a 768-byte 3-channel Lookup Table (1 x 256 x 3 uint8) that fits
-        entirely in the CPU L1 Cache. Called ONLY when a slider or preset changes!
+        Pré-calcula a Tabela de Consulta (Lookup Table) de 768 bytes (1 x 256 x 3 uint8)
+        que cabe inteira no Cache L1 da CPU.
+        Executada SOMENTE quando o usuário altera um slider ou preset na interface.
         """
         gain = self.brightness_gain
         contrast = self.contrast
         gamma = self.gamma
         temp = self.color_temp
 
-        # Apply preset modifiers on top of user sliders
+        # Modificadores de curvas de cor baseados em presets artísticos
         if self.color_preset == "warm":
             temp = np.clip(temp + 0.35, -1.0, 1.0)
             contrast *= 1.05
@@ -117,6 +127,7 @@ class VirtualCamEngine:
         elif self.color_preset == "bw":
             contrast *= 1.22
 
+        # Se todos os parâmetros estiverem em valores neutros, ignora a etapa LUT (custo = 0.00ms)
         if (
             abs(gain - 1.0) < 0.02
             and abs(contrast - 1.0) < 0.02
@@ -130,14 +141,14 @@ class VirtualCamEngine:
         self._lut_is_identity = False
         x = np.linspace(0.0, 1.0, 256, dtype=np.float32)
 
-        # 1. Gamma curve
+        # 1. Correção de curva Gamma
         if abs(gamma - 1.0) >= 0.02:
             x = np.power(np.clip(x, 1e-5, 1.0), 1.0 / max(0.2, gamma))
 
-        # 2. Brightness gain + Contrast around midpoint (0.5)
+        # 2. Ganho de exposição (brilho) e contraste simétrico no ponto médio (0.5)
         base = (x * gain - 0.5) * contrast + 0.5
 
-        # 3. Color Temperature channel balance (BGR order: B=0, G=1, R=2)
+        # 3. Equilíbrio de canais para temperatura de cor (ordem BGR: B=0, G=1, R=2)
         b_curve = np.clip((base * (1.0 - temp * 0.18)) * 255.0, 0.0, 255.0).astype(np.uint8)
         g_curve = np.clip((base * (1.0 + abs(temp) * 0.02)) * 255.0, 0.0, 255.0).astype(np.uint8)
         r_curve = np.clip((base * (1.0 + temp * 0.18)) * 255.0, 0.0, 255.0).astype(np.uint8)
@@ -147,6 +158,7 @@ class VirtualCamEngine:
         self._color_lut[0, :, 2] = r_curve
 
     def _ensure_camera(self, target_w: int = 1280, target_h: int = 720) -> None:
+        """Garante a inicialização estável da câmera virtual em instância única (Singleton)."""
         if not HAS_PYVIRTUALCAM:
             self.driver_active = False
             self.driver_error = "pyvirtualcam não instalado"
@@ -159,6 +171,7 @@ class VirtualCamEngine:
         self.height = target_h
         self._vcam_canvas = np.zeros((self.height, self.width, 3), dtype=np.uint8)
 
+        # Tenta conectar via UnityCapture (DirectShow estável) ou OBS Virtual Camera
         for backend in ("unitycapture", "obs"):
             try:
                 self.cam = pyvirtualcam.Camera(
@@ -172,26 +185,27 @@ class VirtualCamEngine:
                 self.backend_name = f"{self.cam.device} ({backend})"
                 self.driver_error = ""
                 logger.info(
-                    f"Virtual Camera initialized once: {self.backend_name} ({self.width}x{self.height}@{self.fps}fps)"
+                    f"Câmera virtual inicializada com sucesso: {self.backend_name} ({self.width}x{self.height}@{self.fps}fps)"
                 )
                 return
             except Exception as err:
                 self.driver_error = str(err)
 
         self.driver_active = False
-        self.backend_name = "Driver Virtual Pendente (1-Click Install)"
+        self.backend_name = "Driver Virtual Pendente (Ative em 1-Clique)"
 
     def process_and_push_bgr(self, bgr_array: np.ndarray) -> Optional[bytes]:
         """
-        Ultra-fast Zero-Overhead Video Pipeline:
-        1. If Frozen (Privacy Pause), re-sends cached frame at 0% CPU cost.
-        2. Applies Zero-Copy ePTZ Crop via NumPy pointer view (`frame[y1:y2, x1:x2]`).
-        3. Applies C++ SIMD Flip / Rotate & 1-Pass L1-Cache `cv2.LUT` Color Studio.
-        4. Writes directly into pre-allocated `_vcam_canvas` (`0` RAM allocations).
+        Pipeline otimizado de processamento de vídeo em tempo real:
+        1. Em modo congelado (Privacidade), reenvia o quadro em cache a 0% de uso de CPU.
+        2. Aplica o corte de Zoom e Pan digital (ePTZ) via fatiamento de ponteiros NumPy.
+        3. Aplica espelhamento/rotação SIMD e a tabela de cores LUT em 1 passada.
+        4. Escreve diretamente no buffer pré-alocado `_vcam_canvas` com zero alocações de memória.
+        5. Gera a versão leve de 360p via OpenCV C++ para o miniplayer da interface desktop.
         """
         t0 = time.perf_counter()
 
-        # 0. Instant Freeze Frame Mode (0% CPU processing!)
+        # 0. Modo de Congelamento Instantâneo (0% de custo na CPU)
         if self.frozen and self._frozen_vcam_frame is not None:
             if self.driver_active and self.cam is not None:
                 try:
@@ -206,7 +220,7 @@ class VirtualCamEngine:
         self.input_width = w_in
         self.input_height = h_in
 
-        # 1. Zero-Copy ePTZ Digital Zoom & Pan (Pure NumPy pointer slice — Negative CPU Cost!)
+        # 1. Zoom e Pan Digital Zero-Copy (ePTZ) via visão de ponteiro NumPy (Custo negativo de CPU)
         if self.zoom_level > 1.01:
             crop_w = max(64, int(w_in / self.zoom_level))
             crop_h = max(64, int(h_in / self.zoom_level))
@@ -218,7 +232,7 @@ class VirtualCamEngine:
             y1 = max(0, min(h_in - crop_h, cy - crop_h // 2))
             frame = frame[y1 : y1 + crop_h, x1 : x1 + crop_w]
 
-        # 2. C++ SIMD Flip & Rotate
+        # 2. Transformações geométricas via instruções C++ SIMD (cv2.flip / cv2.rotate)
         if self.mirror_horizontal and self.mirror_vertical:
             frame = cv2.flip(frame, -1)
         elif self.mirror_horizontal:
@@ -233,25 +247,27 @@ class VirtualCamEngine:
         elif self.rotation == 270:
             frame = cv2.rotate(frame, cv2.ROTATE_90_COUNTERCLOCKWISE)
 
-        # 3. 1-Pass L1-Cache Color Studio (`cv2.LUT` in-place)
+        # 3. Aplicação do Estúdio de Cor em 1 única passada no Cache L1 (cv2.LUT)
         if not self._lut_is_identity:
             if not frame.flags["WRITEABLE"] or not frame.flags["C_CONTIGUOUS"]:
                 frame = np.ascontiguousarray(frame)
             cv2.LUT(frame, self._color_lut, dst=frame)
 
+        # Conversão em escala de cinza para o preset Preto e Branco
         if self.color_preset == "bw":
             gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
             frame = cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
 
         h, w = frame.shape[:2]
 
-        # 4. Push to Virtual Webcam Driver (Zero-Allocation Direct Write into `_vcam_canvas`)
+        # 4. Envio para o driver de webcam virtual (Escrita direta no canvas pré-alocado)
         if not self.driver_active and self.frames_received % 180 == 0:
             self._ensure_camera(1280, 720)
 
         if w == self.width and h == self.height:
             out_vcam = frame
         else:
+            # Preserva a proporção com barras letterbox limpas sem recriar buffers
             scale = min(self.width / w, self.height / h)
             nw, nh = int(w * scale), int(h * scale)
             if (nw, nh) != self._last_fit_dims:
@@ -273,9 +289,9 @@ class VirtualCamEngine:
             try:
                 self.cam.send(out_vcam)
             except Exception as e:
-                logger.warning(f"VirtualCam send error: {e}")
+                logger.warning(f"Erro no envio para a webcam virtual: {e}")
 
-        # 5. Update Telemetry FPS
+        # 5. Cálculo da taxa real de quadros por segundo (FPS)
         self.frames_received += 1
         self._fps_counter += 1
         now = time.perf_counter()
@@ -285,7 +301,7 @@ class VirtualCamEngine:
             self._fps_counter = 0
             self._fps_timer = now
 
-        # 6. Generate Low-Overhead Miniplayer Frame (360p Downscale via OpenCV C++ JPEG encoder)
+        # 6. Geração do preview leve para o Miniplayer desktop (Codificação JPEG em C++ ~0.1ms)
         preview_jpeg: Optional[bytes] = None
         if self.miniplayer_enabled and (now - self._last_miniplayer_time) >= (1.0 / self.miniplayer_max_fps):
             self._last_miniplayer_time = now
@@ -300,6 +316,7 @@ class VirtualCamEngine:
         return preview_jpeg
 
     def get_status(self) -> Dict[str, Any]:
+        """Retorna o dicionário de telemetria com o estado atual da câmera e do estúdio."""
         res_str = f"{self.input_width}x{self.input_height}" if self.input_width else "Aguardando Stream"
         return {
             "driver_active": self.driver_active,
@@ -324,6 +341,7 @@ class VirtualCamEngine:
         }
 
     def close(self) -> None:
+        """Libera o dispositivo de câmera virtual ao encerrar o aplicativo."""
         if self.cam is not None:
             try:
                 self.cam.close()
