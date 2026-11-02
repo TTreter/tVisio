@@ -22,7 +22,8 @@ use windows_sys::Win32::{
 };
 
 const SYNCHRONIZE_RIGHT: u32 = 0x0010_0000;
-const UNITY_CAPTURE_CLSID: &str = "CLSID\\{5C2CD55C-92AD-4999-8666-912BD3E70000}";
+const UNITY_CAPTURE_CLSID_64: &str = "{5C2CD55C-92AD-4999-8666-912BD3E70010}";
+const UNITY_CAPTURE_CLSID_32: &str = "{5C2CD55C-92AD-4999-8666-912BD3E70020}";
 
 /// Configura as chaves de registro do UnityCapture no Windows (`HKCU\Software\UnityCapture\Device 0`)
 /// para que o dispositivo DirectShow apareça como `"tVisio Virtual Camera"` no OBS, Discord, Meet, Zoom e Teams.
@@ -36,15 +37,22 @@ pub fn configure_tvisio_camera_name() {
     }
 }
 
-/// Verifica no Registro do Windows (`HKEY_CLASSES_ROOT\CLSID\{5C2CD55C...}`) se a DLL DirectShow está registrada.
+/// Verifica no Registro do Windows se o filtro DirectShow UnityCapture está registrado.
 pub fn is_unity_capture_registered() -> bool {
     let hkcr = RegKey::predef(HKEY_CLASSES_ROOT);
-    if hkcr.open_subkey(UNITY_CAPTURE_CLSID).is_ok() {
+    if hkcr.open_subkey(format!(r"CLSID\{UNITY_CAPTURE_CLSID_64}")).is_ok()
+        || hkcr.open_subkey(format!(r"CLSID\{UNITY_CAPTURE_CLSID_32}")).is_ok()
+    {
         return true;
     }
     let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
-    hklm.open_subkey(format!(r"SOFTWARE\Classes\{UNITY_CAPTURE_CLSID}"))
-        .is_ok()
+    if hklm.open_subkey(format!(r"SOFTWARE\Classes\CLSID\{UNITY_CAPTURE_CLSID_64}")).is_ok()
+        || hklm.open_subkey(format!(r"SOFTWARE\Classes\CLSID\{UNITY_CAPTURE_CLSID_32}")).is_ok()
+        || hklm.open_subkey(format!(r"SOFTWARE\WOW6432Node\Classes\CLSID\{UNITY_CAPTURE_CLSID_32}")).is_ok()
+    {
+        return true;
+    }
+    false
 }
 
 /// Cliente de Memória Compartilhada Win32 para envio direto de quadros RGBA ao filtro DirectShow.
