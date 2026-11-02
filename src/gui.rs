@@ -17,8 +17,8 @@ use crate::win_integration::{
     MENU_ID_CLOSE_TRAY, MENU_ID_ECO, MENU_ID_FREEZE, MENU_ID_OPEN, MENU_ID_QUIT, MENU_ID_STARTUP,
 };
 use eframe::egui::{
-    self, Align, Color32, ColorImage, CornerRadius, FontFamily, FontId, Frame, Id, Key, Layout,
-    Margin, Pos2, Rect, RichText, Sense, Stroke, TextureHandle, TextureOptions, Vec2,
+    self, Align, Align2, Color32, ColorImage, CornerRadius, FontFamily, FontId, Frame, Id, Key,
+    Layout, Margin, Pos2, Rect, RichText, Sense, Stroke, TextureHandle, TextureOptions, Vec2,
 };
 use serde_json::json;
 use std::time::{Duration, Instant};
@@ -107,33 +107,74 @@ impl TVisioGuiApp {
         visuals.extreme_bg_color = Color32::from_rgb(5, 10, 22);
 
         visuals.widgets.noninteractive.bg_fill = Color32::from_rgb(11, 18, 34);
-        visuals.widgets.noninteractive.bg_stroke = Stroke::new(1.0_f32, Color32::from_rgb(30, 41, 59));
-        visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0_f32, Color32::from_rgb(226, 232, 240));
+        visuals.widgets.noninteractive.bg_stroke =
+            Stroke::new(1.0_f32, Color32::from_rgb(30, 41, 59));
+        visuals.widgets.noninteractive.fg_stroke =
+            Stroke::new(1.0_f32, Color32::from_rgb(226, 232, 240));
         visuals.widgets.noninteractive.corner_radius = CornerRadius::same(8);
 
-        visuals.widgets.inactive.bg_fill = Color32::from_rgb(15, 23, 42);
-        visuals.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, Color32::from_rgb(38, 52, 74));
-        visuals.widgets.inactive.fg_stroke = Stroke::new(1.0_f32, Color32::from_rgb(226, 232, 240));
+        visuals.widgets.inactive.bg_fill = Color32::from_rgb(15, 24, 44);
+        visuals.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, Color32::from_rgb(38, 54, 82));
+        visuals.widgets.inactive.fg_stroke =
+            Stroke::new(1.0_f32, Color32::from_rgb(226, 232, 240));
         visuals.widgets.inactive.corner_radius = CornerRadius::same(8);
 
-        visuals.widgets.hovered.bg_fill = Color32::from_rgb(22, 34, 60);
+        visuals.widgets.hovered.bg_fill = Color32::from_rgb(22, 36, 64);
         visuals.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, Color32::from_rgb(0, 240, 255));
         visuals.widgets.hovered.fg_stroke = Stroke::new(1.0_f32, Color32::WHITE);
         visuals.widgets.hovered.corner_radius = CornerRadius::same(8);
 
-        visuals.widgets.active.bg_fill = Color32::from_rgb(0, 175, 200);
+        visuals.widgets.active.bg_fill = Color32::from_rgb(0, 175, 205);
         visuals.widgets.active.bg_stroke = Stroke::new(1.0_f32, Color32::from_rgb(0, 240, 255));
         visuals.widgets.active.fg_stroke = Stroke::new(1.0_f32, Color32::from_rgb(3, 7, 18));
         visuals.widgets.active.corner_radius = CornerRadius::same(8);
 
-        visuals.selection.bg_fill = Color32::from_rgb(0, 180, 216);
-        visuals.selection.stroke = Stroke::new(1.0_f32, Color32::from_rgb(0, 240, 255));
+        visuals.selection.bg_fill = Color32::from_rgb(0, 185, 215);
+        visuals.selection.stroke = Stroke::new(1.0_f32, Color32::from_rgb(3, 7, 18));
 
         ctx.set_visuals(visuals);
     }
 
     fn show_toast(&mut self, msg: impl Into<String>) {
         self.status_toast = Some((msg.into(), Instant::now()));
+    }
+
+    /// Botão estilizado em vidro translúcido com estado ativo/inativo sempre legível.
+    fn glass_button(
+        ui: &mut egui::Ui,
+        label: &str,
+        active: bool,
+        size: Vec2,
+    ) -> egui::Response {
+        let actual_size = Vec2::new(
+            if size.x <= 0.0 {
+                ui.available_width()
+            } else {
+                size.x
+            },
+            size.y,
+        );
+        let (bg, fg, border) = if active {
+            (
+                Color32::from_rgba_unmultiplied(0, 220, 250, 42),
+                Color32::from_rgb(0, 240, 255),
+                Color32::from_rgb(0, 240, 255),
+            )
+        } else {
+            (
+                Color32::from_rgb(15, 24, 44),
+                Color32::from_rgb(226, 232, 240),
+                Color32::from_rgb(36, 52, 80),
+            )
+        };
+
+        let btn = egui::Button::new(RichText::new(label).size(12.0).strong().color(fg))
+            .fill(bg)
+            .stroke(Stroke::new(1.0_f32, border))
+            .corner_radius(CornerRadius::same(8))
+            .min_size(actual_size);
+
+        ui.add_sized(actual_size, btn)
     }
 
     fn poll_tray_and_window_events(&mut self, ctx: &egui::Context) {
@@ -287,6 +328,80 @@ impl TVisioGuiApp {
         }
     }
 
+    /// Desenha um card de métrica compacto com tamanho fixo via Painter (imune a distorções de layout).
+    fn draw_metric_box(
+        ui: &mut egui::Ui,
+        label: &str,
+        value: &str,
+        val_color: Color32,
+        width: f32,
+    ) {
+        let (rect, _) = ui.allocate_exact_size(Vec2::new(width, 38.0), Sense::hover());
+        let painter = ui.painter_at(rect);
+        painter.rect_filled(rect, CornerRadius::same(9), Color32::from_rgb(13, 22, 42));
+        painter.rect_stroke(
+            rect,
+            CornerRadius::same(9),
+            Stroke::new(1.0_f32, Color32::from_rgb(30, 45, 72)),
+            egui::StrokeKind::Inside,
+        );
+        painter.text(
+            Pos2::new(rect.left() + 10.0, rect.top() + 11.0),
+            Align2::LEFT_CENTER,
+            label,
+            FontId::new(9.0, FontFamily::Proportional),
+            Color32::from_rgb(115, 132, 158),
+        );
+        painter.text(
+            Pos2::new(rect.left() + 10.0, rect.bottom() - 11.0),
+            Align2::LEFT_CENTER,
+            value,
+            FontId::new(12.5, FontFamily::Proportional),
+            val_color,
+        );
+    }
+
+    /// Desenha a pílula de status de conexão com indicador circular vetorial.
+    fn draw_connection_badge(ui: &mut egui::Ui, connected: bool) {
+        let (bg, border, fg, text) = if connected {
+            (
+                Color32::from_rgba_unmultiplied(16, 185, 129, 32),
+                Color32::from_rgb(16, 185, 129),
+                Color32::from_rgb(52, 211, 153),
+                "Ao Vivo",
+            )
+        } else {
+            (
+                Color32::from_rgb(13, 22, 42),
+                Color32::from_rgb(45, 62, 92),
+                Color32::from_rgb(148, 163, 184),
+                "Standby",
+            )
+        };
+
+        let width = if connected { 92.0 } else { 88.0 };
+        let (rect, _) = ui.allocate_exact_size(Vec2::new(width, 34.0), Sense::hover());
+        let painter = ui.painter_at(rect);
+        painter.rect_filled(rect, CornerRadius::same(17), bg);
+        painter.rect_stroke(
+            rect,
+            CornerRadius::same(17),
+            Stroke::new(1.0_f32, border),
+            egui::StrokeKind::Inside,
+        );
+
+        let dot_center = Pos2::new(rect.left() + 15.0, rect.center().y);
+        painter.circle_filled(dot_center, 4.0, fg);
+
+        painter.text(
+            Pos2::new(rect.left() + 26.0, rect.center().y),
+            Align2::LEFT_CENTER,
+            text,
+            FontId::new(12.0, FontFamily::Proportional),
+            fg,
+        );
+    }
+
     fn render_header(&mut self, ui: &mut egui::Ui, ctx: &egui::Context) {
         let (connected, device_info, g2g, rtt, fps, bat_lvl, bat_chg) = {
             let s = self.state.lock().unwrap();
@@ -307,8 +422,9 @@ impl TVisioGuiApp {
             .corner_radius(CornerRadius::same(14))
             .inner_margin(Margin::symmetric(16, 10))
             .show(ui, |ui| {
-                ui.horizontal(|ui| {
-                    // Marca e Subtítulo
+                ui.set_height(42.0);
+                ui.horizontal_centered(|ui| {
+                    // Lado Esquerdo: Ícone + Marca + Subtítulo
                     if let Some(logo) = &self.logo_texture {
                         let (rect, _) = ui.allocate_exact_size(Vec2::splat(36.0), Sense::hover());
                         ui.painter().image(
@@ -320,168 +436,135 @@ impl TVisioGuiApp {
                         ui.add_space(6.0);
                     }
 
-                    ui.vertical(|ui| {
-                        ui.horizontal(|ui| {
+                    ui.allocate_ui_with_layout(
+                        Vec2::new(320.0, 40.0),
+                        Layout::top_down(Align::Min),
+                        |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    RichText::new("tVisio")
+                                        .size(19.0)
+                                        .strong()
+                                        .color(Color32::WHITE),
+                                );
+                                Frame::new()
+                                    .fill(Color32::from_rgba_unmultiplied(0, 240, 255, 28))
+                                    .stroke(Stroke::new(1.0_f32, Color32::from_rgb(0, 210, 235)))
+                                    .corner_radius(CornerRadius::same(12))
+                                    .inner_margin(Margin::symmetric(8, 2))
+                                    .show(ui, |ui| {
+                                        ui.label(
+                                            RichText::new("ZERO-OVERHEAD ENGINE")
+                                                .size(9.5)
+                                                .strong()
+                                                .color(Color32::from_rgb(0, 240, 255)),
+                                        );
+                                    });
+                            });
+
+                            let sub_text = if connected {
+                                format!("Conectado: {device_info}")
+                            } else {
+                                "Aguardando pareamento via QR Code...".to_string()
+                            };
                             ui.label(
-                                RichText::new("tVisio")
-                                    .size(20.0)
-                                    .strong()
-                                    .color(Color32::WHITE),
+                                RichText::new(sub_text)
+                                    .size(11.5)
+                                    .color(Color32::from_rgb(148, 163, 184)),
                             );
-                            Frame::new()
-                                .fill(Color32::from_rgba_unmultiplied(0, 240, 255, 28))
-                                .stroke(Stroke::new(1.0_f32, Color32::from_rgb(0, 210, 235)))
-                                .corner_radius(CornerRadius::same(20))
-                                .inner_margin(Margin::symmetric(8, 2))
-                                .show(ui, |ui| {
-                                    ui.label(
-                                        RichText::new("ZERO-OVERHEAD ENGINE")
-                                            .size(10.0)
-                                            .strong()
-                                            .color(Color32::from_rgb(0, 240, 255)),
-                                    );
-                                });
-                        });
+                        },
+                    );
 
-                        let sub_text = if connected {
-                            format!("Conectado: {device_info}")
-                        } else {
-                            "Aguardando pareamento via QR Code...".to_string()
-                        };
-                        ui.label(
-                            RichText::new(sub_text)
-                                .size(11.5)
-                                .color(Color32::from_rgb(148, 163, 184)),
-                        );
-                    });
-
-                    // Barra de Telemetria à Direita
+                    // Lado Direito: Chips de Telemetria com tamanho fixo + Botões
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        let pip_label = if self.pip_mode { "🗖 Expandir" } else { "🗗 PiP" };
-                        if ui
-                            .button(RichText::new(pip_label).size(12.0))
+                        let pip_label = if self.pip_mode { "Expandir" } else { "PiP" };
+                        if Self::glass_button(ui, pip_label, self.pip_mode, Vec2::new(62.0, 34.0))
                             .on_hover_text("Alternar Modo Miniplayer Compacto (Picture-in-Picture)")
                             .clicked()
                         {
                             self.pip_mode = !self.pip_mode;
                             let target_size = if self.pip_mode {
-                                Vec2::new(620.0, 460.0)
+                                Vec2::new(640.0, 480.0)
                             } else {
                                 Vec2::new(1180.0, 740.0)
                             };
                             ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(target_size));
                         }
 
-                        if ui
-                            .button(RichText::new("⚙").size(14.0))
-                            .on_hover_text("Abrir Aba de Ajustes do Sistema")
-                            .clicked()
+                        if Self::glass_button(
+                            ui,
+                            "⚙",
+                            self.active_tab == SidebarTab::Settings,
+                            Vec2::new(36.0, 34.0),
+                        )
+                        .on_hover_text("Abrir Aba de Ajustes do Sistema")
+                        .clicked()
                         {
                             self.pip_mode = false;
                             self.active_tab = SidebarTab::Settings;
                         }
 
-                        ui.add_space(4.0);
-
-                        // Chip: Bateria
-                        let bat_str = match bat_lvl {
-                            Some(b) => {
-                                if bat_chg {
-                                    format!("⚡ {b}%")
-                                } else {
-                                    format!("{b}%")
+                        if !self.pip_mode {
+                            let bat_str = match bat_lvl {
+                                Some(b) => {
+                                    if bat_chg {
+                                        format!("⚡ {b}%")
+                                    } else {
+                                        format!("{b}%")
+                                    }
                                 }
-                            }
-                            None => "--%".to_string(),
-                        };
-                        Self::telemetry_chip(
-                            ui,
-                            "BATERIA",
-                            &bat_str,
-                            Color32::from_rgb(226, 232, 240),
-                        );
+                                None => "--%".to_string(),
+                            };
+                            Self::draw_metric_box(
+                                ui,
+                                "BATERIA",
+                                &bat_str,
+                                Color32::from_rgb(226, 232, 240),
+                                78.0,
+                            );
 
-                        // Chip: Taxa FPS
-                        let fps_str = if connected {
-                            format!("{fps:.0} FPS")
-                        } else {
-                            "0 FPS".to_string()
-                        };
-                        Self::telemetry_chip(
-                            ui,
-                            "TAXA",
-                            &fps_str,
-                            Color32::from_rgb(226, 232, 240),
-                        );
+                            let fps_str = if connected {
+                                format!("{fps:.0} FPS")
+                            } else {
+                                "0 FPS".to_string()
+                            };
+                            Self::draw_metric_box(
+                                ui,
+                                "TAXA",
+                                &fps_str,
+                                Color32::from_rgb(226, 232, 240),
+                                74.0,
+                            );
 
-                        // Chip: Ping Rádio
-                        let rtt_str = if connected {
-                            format!("{rtt:.1} ms")
-                        } else {
-                            "-- ms".to_string()
-                        };
-                        Self::telemetry_chip(
-                            ui,
-                            "PING RÁDIO",
-                            &rtt_str,
-                            Color32::from_rgb(226, 232, 240),
-                        );
+                            let rtt_str = if connected {
+                                format!("{rtt:.1} ms")
+                            } else {
+                                "-- ms".to_string()
+                            };
+                            Self::draw_metric_box(
+                                ui,
+                                "PING RÁDIO",
+                                &rtt_str,
+                                Color32::from_rgb(226, 232, 240),
+                                86.0,
+                            );
 
-                        // Chip: G2G Delay
-                        let g2g_str = if connected {
-                            format!("⚡ {g2g:.1} ms")
-                        } else {
-                            "-- ms".to_string()
-                        };
-                        Self::telemetry_chip(
-                            ui,
-                            "G2G DELAY",
-                            &g2g_str,
-                            Color32::from_rgb(0, 240, 255),
-                        );
+                            let g2g_str = if connected {
+                                format!("⚡ {g2g:.1} ms")
+                            } else {
+                                "-- ms".to_string()
+                            };
+                            Self::draw_metric_box(
+                                ui,
+                                "G2G DELAY",
+                                &g2g_str,
+                                Color32::from_rgb(0, 240, 255),
+                                92.0,
+                            );
+                        }
 
-                        // Status Badge (Standby / Ao Vivo)
-                        let (badge_bg, badge_fg, badge_txt) = if connected {
-                            (
-                                Color32::from_rgba_unmultiplied(16, 185, 129, 35),
-                                Color32::from_rgb(52, 211, 153),
-                                "● Transmitindo Ao Vivo",
-                            )
-                        } else {
-                            (
-                                Color32::from_rgba_unmultiplied(100, 116, 139, 30),
-                                Color32::from_rgb(148, 163, 184),
-                                "● Standby",
-                            )
-                        };
-                        Frame::new()
-                            .fill(badge_bg)
-                            .stroke(Stroke::new(1.0_f32, badge_fg))
-                            .corner_radius(CornerRadius::same(20))
-                            .inner_margin(Margin::symmetric(10, 5))
-                            .show(ui, |ui| {
-                                ui.label(RichText::new(badge_txt).size(11.5).strong().color(badge_fg));
-                            });
+                        Self::draw_connection_badge(ui, connected);
                     });
-                });
-            });
-    }
-
-    fn telemetry_chip(ui: &mut egui::Ui, label: &str, value: &str, val_color: Color32) {
-        Frame::new()
-            .fill(Color32::from_rgb(13, 22, 42))
-            .stroke(Stroke::new(1.0_f32, Color32::from_rgb(30, 45, 72)))
-            .corner_radius(CornerRadius::same(10))
-            .inner_margin(Margin::symmetric(10, 4))
-            .show(ui, |ui| {
-                ui.vertical(|ui| {
-                    ui.label(
-                        RichText::new(label)
-                            .size(9.0)
-                            .strong()
-                            .color(Color32::from_rgb(100, 116, 139)),
-                    );
-                    ui.label(RichText::new(value).size(12.5).strong().color(val_color));
                 });
             });
     }
@@ -530,17 +613,19 @@ impl TVisioGuiApp {
                 ui.horizontal(|ui| {
                     Frame::new()
                         .fill(Color32::from_rgb(17, 28, 52))
+                        .stroke(Stroke::new(1.0_f32, Color32::from_rgb(32, 54, 90)))
                         .corner_radius(CornerRadius::same(6))
-                        .inner_margin(Margin::symmetric(8, 3))
+                        .inner_margin(Margin::symmetric(8, 4))
                         .show(ui, |ui| {
                             ui.label(
-                                RichText::new("MINIPLAYER GPU (360p)")
+                                RichText::new("MINIPLAYER LEVE (360p)")
                                     .size(10.5)
                                     .strong()
                                     .color(Color32::from_rgb(0, 240, 255)),
                             );
                         });
 
+                    ui.add_space(4.0);
                     ui.label(
                         RichText::new(&protocol)
                             .size(11.5)
@@ -548,14 +633,14 @@ impl TVisioGuiApp {
                     );
 
                     if zoom_level > 1.01 {
-                        if ui
-                            .button(
-                                RichText::new(format!("🔍 {zoom_level:.1}x (Resetar)"))
-                                    .size(11.0)
-                                    .color(Color32::from_rgb(0, 240, 255)),
-                            )
-                            .on_hover_text("Clique para voltar ao Zoom 1.0x")
-                            .clicked()
+                        if Self::glass_button(
+                            ui,
+                            &format!("🔍 {zoom_level:.1}x"),
+                            true,
+                            Vec2::new(72.0, 26.0),
+                        )
+                        .on_hover_text("Clique para voltar ao Zoom 1.0x")
+                        .clicked()
                         {
                             let mut s = self.state.lock().unwrap();
                             s.vcam.zoom_level = 1.0;
@@ -574,10 +659,9 @@ impl TVisioGuiApp {
                         } else {
                             "⚡ Zero-Render"
                         };
-                        if ui
-                            .selectable_label(!preview_enabled, RichText::new(prev_txt).size(11.5))
+                        if Self::glass_button(ui, prev_txt, !preview_enabled, Vec2::new(116.0, 28.0))
                             .on_hover_text(
-                                "Desativa a renderização na janela para 0% de uso de GPU no PC",
+                                "Desativa a renderização na janela para 0% de uso de GPU na interface",
                             )
                             .clicked()
                         {
@@ -585,8 +669,7 @@ impl TVisioGuiApp {
                             s.vcam.miniplayer_enabled = !s.vcam.miniplayer_enabled;
                         }
 
-                        if ui
-                            .selectable_label(self.show_grid, RichText::new("# Grade").size(11.5))
+                        if Self::glass_button(ui, "# Grade", self.show_grid, Vec2::new(74.0, 28.0))
                             .on_hover_text("Exibir grade da Regra dos Terços")
                             .clicked()
                         {
@@ -595,16 +678,20 @@ impl TVisioGuiApp {
                     });
                 });
 
-                ui.add_space(8.0);
+                ui.add_space(10.0);
 
                 // 2. Palco de Vídeo 16:9 Interativo (Scroll = Zoom ePTZ, Arraste = Pan ePTZ)
                 let avail_w = ui.available_width();
-                let avail_h = (ui.available_height() - 104.0).max(200.0);
+                let avail_h = (ui.available_height() - 104.0).max(190.0);
                 let (stage_rect, stage_resp) =
                     ui.allocate_exact_size(Vec2::new(avail_w, avail_h), Sense::click_and_drag());
 
                 let painter = ui.painter_at(stage_rect);
-                painter.rect_filled(stage_rect, CornerRadius::same(12), Color32::from_rgb(4, 8, 18));
+                painter.rect_filled(
+                    stage_rect,
+                    CornerRadius::same(12),
+                    Color32::from_rgb(4, 8, 18),
+                );
 
                 // Interação de Roda do Mouse (Zoom Digital ePTZ 1.0x a 3.0x)
                 if stage_resp.hovered() {
@@ -651,14 +738,14 @@ impl TVisioGuiApp {
                 if !preview_enabled {
                     painter.text(
                         stage_rect.center() - Vec2::new(0.0, 12.0),
-                        egui::Align2::CENTER_CENTER,
+                        Align2::CENTER_CENTER,
                         "⚡ Modo Zero-Render Ativo",
                         FontId::new(18.0, FontFamily::Proportional),
                         Color32::from_rgb(0, 240, 255),
                     );
                     painter.text(
                         stage_rect.center() + Vec2::new(0.0, 16.0),
-                        egui::Align2::CENTER_CENTER,
+                        Align2::CENTER_CENTER,
                         "Miniplayer pausado (0% GPU na janela). Sua Webcam Virtual segue transmitindo em qualidade máxima.",
                         FontId::new(12.5, FontFamily::Proportional),
                         Color32::from_rgb(148, 163, 184),
@@ -674,7 +761,6 @@ impl TVisioGuiApp {
                     }
 
                     if let Some(prev_tex) = &self.preview_texture {
-                        // Calcula o retângulo 16:9 centralizado dentro do palco
                         let target_aspect = 16.0 / 9.0;
                         let stage_aspect = stage_rect.width() / stage_rect.height().max(1.0);
                         let (vw, vh) = if stage_aspect > target_aspect {
@@ -684,7 +770,8 @@ impl TVisioGuiApp {
                             let w = stage_rect.width();
                             (w, w / target_aspect)
                         };
-                        let video_rect = Rect::from_center_size(stage_rect.center(), Vec2::new(vw, vh));
+                        let video_rect =
+                            Rect::from_center_size(stage_rect.center(), Vec2::new(vw, vh));
                         painter.image(
                             prev_tex.id(),
                             video_rect,
@@ -694,8 +781,10 @@ impl TVisioGuiApp {
                     }
                 } else {
                     if let Some(logo) = &self.logo_texture {
-                        let logo_rect =
-                            Rect::from_center_size(stage_rect.center() - Vec2::new(0.0, 34.0), Vec2::splat(64.0));
+                        let logo_rect = Rect::from_center_size(
+                            stage_rect.center() - Vec2::new(0.0, 34.0),
+                            Vec2::splat(64.0),
+                        );
                         painter.image(
                             logo.id(),
                             logo_rect,
@@ -705,14 +794,14 @@ impl TVisioGuiApp {
                     }
                     painter.text(
                         stage_rect.center() + Vec2::new(0.0, 16.0),
-                        egui::Align2::CENTER_CENTER,
+                        Align2::CENTER_CENTER,
                         "Pronto para Conectar",
                         FontId::new(18.0, FontFamily::Proportional),
                         Color32::WHITE,
                     );
                     painter.text(
                         stage_rect.center() + Vec2::new(0.0, 40.0),
-                        egui::Align2::CENTER_CENTER,
+                        Align2::CENTER_CENTER,
                         "Aponte a câmera do seu celular para o QR Code ao lado para iniciar a transmissão.",
                         FontId::new(12.5, FontFamily::Proportional),
                         Color32::from_rgb(148, 163, 184),
@@ -721,18 +810,25 @@ impl TVisioGuiApp {
 
                 // Grade da Regra dos Terços (# Grade)
                 if self.show_grid {
-                    let grid_stroke = Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(0, 240, 255, 90));
+                    let grid_stroke =
+                        Stroke::new(1.0_f32, Color32::from_rgba_unmultiplied(0, 240, 255, 90));
                     let w3 = stage_rect.width() / 3.0;
                     let h3 = stage_rect.height() / 3.0;
                     for i in 1..=2 {
                         let x = stage_rect.left() + w3 * (i as f32);
                         painter.line_segment(
-                            [Pos2::new(x, stage_rect.top()), Pos2::new(x, stage_rect.bottom())],
+                            [
+                                Pos2::new(x, stage_rect.top()),
+                                Pos2::new(x, stage_rect.bottom()),
+                            ],
                             grid_stroke,
                         );
                         let y = stage_rect.top() + h3 * (i as f32);
                         painter.line_segment(
-                            [Pos2::new(stage_rect.left(), y), Pos2::new(stage_rect.right(), y)],
+                            [
+                                Pos2::new(stage_rect.left(), y),
+                                Pos2::new(stage_rect.right(), y),
+                            ],
                             grid_stroke,
                         );
                     }
@@ -751,8 +847,8 @@ impl TVisioGuiApp {
                     );
                     painter.text(
                         badge_rect.center(),
-                        egui::Align2::CENTER_CENTER,
-                        "🧊 IMAGEM CONGELADA (0% CPU)",
+                        Align2::CENTER_CENTER,
+                        "⏸ IMAGEM CONGELADA (0% CPU)",
                         FontId::new(11.5, FontFamily::Proportional),
                         Color32::WHITE,
                     );
@@ -765,90 +861,86 @@ impl TVisioGuiApp {
                     egui::StrokeKind::Inside,
                 );
 
-                ui.add_space(8.0);
+                ui.add_space(10.0);
 
-                // 3. Dock Translúcida de Controle Rápido (Todos os 7 controles)
-                ui.horizontal_centered(|ui| {
-                    ui.columns(7, |cols| {
-                        if cols[0]
-                            .button(RichText::new("🔄 Lente").size(12.0))
-                            .on_hover_text("Alternar entre as câmeras físicas do smartphone")
-                            .clicked()
-                        {
-                            self.state
-                                .lock()
-                                .unwrap()
-                                .send_mobile_command(json!({ "command": "switch_camera" }));
-                        }
+                // 3. Dock Translúcida de Controle Rápido (Todos os 7 botões com visual uniforme)
+                ui.columns(7, |cols| {
+                    let full_h = Vec2::new(0.0, 32.0);
+                    if Self::glass_button(&mut cols[0], "🔄 Lente", false, full_h)
+                        .on_hover_text("Alternar entre as câmeras físicas do smartphone")
+                        .clicked()
+                    {
+                        self.state
+                            .lock()
+                            .unwrap()
+                            .send_mobile_command(json!({ "command": "switch_camera" }));
+                    }
 
-                        if cols[1]
-                            .selectable_label(af_locked, RichText::new("🎯 Foco").size(12.0))
-                            .on_hover_text("Travar Foco Óptico (AF-Lock)")
-                            .clicked()
-                        {
-                            self.state
-                                .lock()
-                                .unwrap()
-                                .send_mobile_command(json!({ "command": "toggle_af_lock" }));
-                        }
+                    if Self::glass_button(&mut cols[1], "🎯 Foco", af_locked, full_h)
+                        .on_hover_text("Travar Foco Óptico (AF-Lock)")
+                        .clicked()
+                    {
+                        self.state
+                            .lock()
+                            .unwrap()
+                            .send_mobile_command(json!({ "command": "toggle_af_lock" }));
+                    }
 
-                        if cols[2]
-                            .selectable_label(torch_on, RichText::new("🔦 Luz").size(12.0))
-                            .on_hover_text("Ligar / Desligar Lanterna Traseira")
-                            .clicked()
-                        {
-                            self.state
-                                .lock()
-                                .unwrap()
-                                .send_mobile_command(json!({ "command": "toggle_torch" }));
-                        }
+                    if Self::glass_button(&mut cols[2], "🔦 Luz", torch_on, full_h)
+                        .on_hover_text("Ligar / Desligar Lanterna Traseira")
+                        .clicked()
+                    {
+                        self.state
+                            .lock()
+                            .unwrap()
+                            .send_mobile_command(json!({ "command": "toggle_torch" }));
+                    }
 
-                        let freeze_txt = if frozen { "▶ Retomar" } else { "⏸ Pausar" };
-                        if cols[3]
-                            .selectable_label(frozen, RichText::new(freeze_txt).size(12.0))
-                            .on_hover_text("Congelar quadro instantaneamente (Privacidade)")
-                            .clicked()
-                        {
-                            let mut s = self.state.lock().unwrap();
-                            s.vcam.frozen = !s.vcam.frozen;
-                        }
+                    let freeze_txt = if frozen { "▶ Retomar" } else { "⏸ Pausar" };
+                    if Self::glass_button(&mut cols[3], freeze_txt, frozen, full_h)
+                        .on_hover_text("Congelar quadro instantaneamente (Privacidade)")
+                        .clicked()
+                    {
+                        let mut s = self.state.lock().unwrap();
+                        s.vcam.frozen = !s.vcam.frozen;
+                    }
 
-                        if cols[4]
-                            .selectable_label(mirror_h, RichText::new("↔ Espelhar").size(12.0))
-                            .on_hover_text("Espelhar imagem horizontalmente")
-                            .clicked()
-                        {
-                            let mut s = self.state.lock().unwrap();
-                            s.vcam.mirror_horizontal = !s.vcam.mirror_horizontal;
-                            s.settings.data.mirror_horizontal = s.vcam.mirror_horizontal;
-                            s.settings.save();
-                        }
+                    if Self::glass_button(&mut cols[4], "↔ Espelhar", mirror_h, full_h)
+                        .on_hover_text("Espelhar imagem horizontalmente")
+                        .clicked()
+                    {
+                        let mut s = self.state.lock().unwrap();
+                        s.vcam.mirror_horizontal = !s.vcam.mirror_horizontal;
+                        s.settings.data.mirror_horizontal = s.vcam.mirror_horizontal;
+                        s.settings.save();
+                    }
 
-                        if cols[5]
-                            .button(RichText::new("⟳ Girar").size(12.0))
-                            .on_hover_text("Girar imagem em 90°")
-                            .clicked()
-                        {
-                            let mut s = self.state.lock().unwrap();
-                            s.vcam.rotation = (s.vcam.rotation + 90) % 360;
-                            s.settings.data.rotation = s.vcam.rotation;
-                            s.settings.save();
-                        }
+                    let rot_active = {
+                        let s = self.state.lock().unwrap();
+                        s.vcam.rotation != 0
+                    };
+                    if Self::glass_button(&mut cols[5], "⟳ Girar", rot_active, full_h)
+                        .on_hover_text("Girar imagem em 90°")
+                        .clicked()
+                    {
+                        let mut s = self.state.lock().unwrap();
+                        s.vcam.rotation = (s.vcam.rotation + 90) % 360;
+                        s.settings.data.rotation = s.vcam.rotation;
+                        s.settings.save();
+                    }
 
-                        if cols[6]
-                            .selectable_label(eco_mode, RichText::new("🌙 Eco").size(12.0))
-                            .on_hover_text("Modo Eco OLED (Apagar tela do celular mantendo transmissão)")
-                            .clicked()
-                        {
-                            self.state
-                                .lock()
-                                .unwrap()
-                                .send_mobile_command(json!({ "command": "toggle_eco_mode" }));
-                        }
-                    });
+                    if Self::glass_button(&mut cols[6], "🌙 Eco", eco_mode, full_h)
+                        .on_hover_text("Modo Eco OLED (Apagar tela do celular mantendo transmissão)")
+                        .clicked()
+                    {
+                        self.state
+                            .lock()
+                            .unwrap()
+                            .send_mobile_command(json!({ "command": "toggle_eco_mode" }));
+                    }
                 });
 
-                ui.add_space(6.0);
+                ui.add_space(8.0);
 
                 // 4. Barra de Status do Driver DirectShow Virtual Camera
                 Frame::new()
@@ -857,13 +949,17 @@ impl TVisioGuiApp {
                     .corner_radius(CornerRadius::same(10))
                     .inner_margin(Margin::symmetric(12, 8))
                     .show(ui, |ui| {
-                        ui.horizontal(|ui| {
+                        ui.horizontal_centered(|ui| {
+                            // Ponto indicador vetorial (Verde quando registrado, Âmbar quando pendente)
                             let dot_color = if driver_registered {
                                 Color32::from_rgb(16, 185, 129)
                             } else {
                                 Color32::from_rgb(245, 158, 11)
                             };
-                            ui.label(RichText::new("●").size(16.0).color(dot_color));
+                            let (dot_rect, _) =
+                                ui.allocate_exact_size(Vec2::new(16.0, 28.0), Sense::hover());
+                            ui.painter()
+                                .circle_filled(dot_rect.center(), 5.0, dot_color);
 
                             ui.vertical(|ui| {
                                 ui.label(
@@ -874,7 +970,7 @@ impl TVisioGuiApp {
                                 );
                                 ui.label(
                                     RichText::new(format!(
-                                        "Entrada: {res_label} • Saída DirectShow: 1280x720 • Pipeline Rust: {decode_ms:.2}ms"
+                                        "Entrada: {res_label} • Saída DirectShow: 1280x720 • Pipeline: {decode_ms:.2}ms"
                                     ))
                                     .size(11.0)
                                     .color(Color32::from_rgb(148, 163, 184)),
@@ -883,18 +979,17 @@ impl TVisioGuiApp {
 
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                                 let btn_label = if driver_registered {
-                                    "✔ Driver Virtual Cam Ativo (Reinstalar)"
+                                    "✓ Driver Virtual Cam Ativo"
                                 } else {
                                     "⚡ Ativar Driver Virtual Cam (1-Clique)"
                                 };
-                                if ui
-                                    .button(
-                                        RichText::new(btn_label)
-                                            .size(12.0)
-                                            .strong()
-                                            .color(Color32::from_rgb(0, 240, 255)),
-                                    )
-                                    .clicked()
+                                if Self::glass_button(
+                                    ui,
+                                    btn_label,
+                                    !driver_registered,
+                                    Vec2::new(235.0, 32.0),
+                                )
+                                .clicked()
                                 {
                                     let base_dir = self.state.lock().unwrap().base_dir.clone();
                                     match install_vcam_driver_offline(&base_dir) {
@@ -905,7 +1000,9 @@ impl TVisioGuiApp {
                                                 .vcam
                                                 .shm
                                                 .refresh_registration_status();
-                                            self.show_toast("Driver DirectShow registrado com sucesso!");
+                                            self.show_toast(
+                                                "Driver DirectShow registrado com sucesso!",
+                                            );
                                         }
                                         Err(e) => {
                                             self.show_toast(e);
@@ -925,40 +1022,49 @@ impl TVisioGuiApp {
             .corner_radius(CornerRadius::same(16))
             .inner_margin(Margin::same(14))
             .show(ui, |ui| {
-                // Seletor de Abas Segmentadas
-                ui.columns(3, |cols| {
-                    if cols[0]
-                        .selectable_label(
-                            self.active_tab == SidebarTab::Connection,
-                            RichText::new("📱 Conexão").size(13.0).strong(),
-                        )
-                        .clicked()
-                    {
-                        self.active_tab = SidebarTab::Connection;
-                    }
-                    if cols[1]
-                        .selectable_label(
-                            self.active_tab == SidebarTab::Studio,
-                            RichText::new("🎨 Estúdio").size(13.0).strong(),
-                        )
-                        .clicked()
-                    {
-                        self.active_tab = SidebarTab::Studio;
-                    }
-                    if cols[2]
-                        .selectable_label(
-                            self.active_tab == SidebarTab::Settings,
-                            RichText::new("⚙ Ajustes").size(13.0).strong(),
-                        )
-                        .clicked()
-                    {
-                        self.active_tab = SidebarTab::Settings;
-                    }
-                });
+                // Seletor de Abas Segmentadas (100% visível tanto ativo quanto inativo)
+                Frame::new()
+                    .fill(Color32::from_rgb(5, 10, 22))
+                    .stroke(Stroke::new(1.0_f32, Color32::from_rgb(24, 36, 60)))
+                    .corner_radius(CornerRadius::same(10))
+                    .inner_margin(Margin::same(4))
+                    .show(ui, |ui| {
+                        ui.columns(3, |cols| {
+                            let tab_sz = Vec2::new(0.0, 30.0);
+                            if Self::glass_button(
+                                &mut cols[0],
+                                "Conexão",
+                                self.active_tab == SidebarTab::Connection,
+                                tab_sz,
+                            )
+                            .clicked()
+                            {
+                                self.active_tab = SidebarTab::Connection;
+                            }
+                            if Self::glass_button(
+                                &mut cols[1],
+                                "Estúdio",
+                                self.active_tab == SidebarTab::Studio,
+                                tab_sz,
+                            )
+                            .clicked()
+                            {
+                                self.active_tab = SidebarTab::Studio;
+                            }
+                            if Self::glass_button(
+                                &mut cols[2],
+                                "⚙ Ajustes",
+                                self.active_tab == SidebarTab::Settings,
+                                tab_sz,
+                            )
+                            .clicked()
+                            {
+                                self.active_tab = SidebarTab::Settings;
+                            }
+                        });
+                    });
 
                 ui.add_space(10.0);
-                ui.separator();
-                ui.add_space(8.0);
 
                 match self.active_tab {
                     SidebarTab::Connection => self.render_tab_connection(ui, ctx),
@@ -968,16 +1074,16 @@ impl TVisioGuiApp {
 
                 if let Some((msg, ts)) = &self.status_toast {
                     if ts.elapsed() < Duration::from_secs(4) {
-                        ui.add_space(8.0);
+                        ui.add_space(6.0);
                         Frame::new()
                             .fill(Color32::from_rgba_unmultiplied(0, 240, 255, 25))
                             .stroke(Stroke::new(1.0_f32, Color32::from_rgb(0, 240, 255)))
                             .corner_radius(CornerRadius::same(8))
-                            .inner_margin(Margin::symmetric(10, 6))
+                            .inner_margin(Margin::symmetric(10, 5))
                             .show(ui, |ui| {
                                 ui.label(
                                     RichText::new(msg)
-                                        .size(11.5)
+                                        .size(11.0)
                                         .color(Color32::from_rgb(0, 240, 255)),
                                 );
                             });
@@ -998,16 +1104,17 @@ impl TVisioGuiApp {
             )
         };
 
-        // 1. Vitrine do QR Code com Cantoneiras Neon Cyan
+        // 1. Vitrine do QR Code dimensionada para caber sem barra de rolagem
         ui.vertical_centered(|ui| {
             Frame::new()
                 .fill(Color32::from_rgb(4, 10, 28))
                 .stroke(Stroke::new(1.5_f32, Color32::from_rgb(0, 210, 240)))
                 .corner_radius(CornerRadius::same(14))
-                .inner_margin(Margin::same(12))
+                .inner_margin(Margin::same(10))
                 .show(ui, |ui| {
                     if let Some(qr_tex) = &self.qr_texture {
-                        let (rect, _) = ui.allocate_exact_size(Vec2::splat(186.0), Sense::hover());
+                        let (rect, _) =
+                            ui.allocate_exact_size(Vec2::splat(162.0), Sense::hover());
                         ui.painter().image(
                             qr_tex.id(),
                             rect,
@@ -1024,7 +1131,7 @@ impl TVisioGuiApp {
             );
         });
 
-        ui.add_space(12.0);
+        ui.add_space(10.0);
 
         // 2. Seletor de Interface de Rede Local
         ui.horizontal(|ui| {
@@ -1070,7 +1177,7 @@ impl TVisioGuiApp {
                 }
             });
 
-        ui.add_space(10.0);
+        ui.add_space(8.0);
 
         // 3. Link Direto de Pareamento (Clique para Copiar)
         ui.label(
@@ -1081,31 +1188,29 @@ impl TVisioGuiApp {
         );
         ui.add_space(4.0);
 
-        if ui
-            .add_sized(
-                [ui.available_width(), 32.0],
-                egui::Button::new(
-                    RichText::new(format!("📋 {pairing_url}"))
-                        .size(11.5)
-                        .color(Color32::from_rgb(0, 240, 255)),
-                ),
-            )
-            .on_hover_text("Clique para copiar o link de pareamento")
-            .clicked()
+        if Self::glass_button(
+            ui,
+            &format!("🔗 {pairing_url}"),
+            true,
+            Vec2::new(ui.available_width(), 32.0),
+        )
+        .on_hover_text("Clique para copiar o link de pareamento")
+        .clicked()
         {
             ctx.copy_text(pairing_url);
             self.show_toast("Link copiado para a área de transferência!");
         }
 
-        ui.add_space(12.0);
+        ui.add_space(10.0);
 
         // 4. Botões de Ferramentas de Rede e Segurança
-        if ui
-            .add_sized(
-                [ui.available_width(), 32.0],
-                egui::Button::new(RichText::new("🔑 Regerar Link / Token do QR Code").size(12.0)),
-            )
-            .clicked()
+        if Self::glass_button(
+            ui,
+            "🔑 Regerar Link / Token do QR Code",
+            false,
+            Vec2::new(ui.available_width(), 32.0),
+        )
+        .clicked()
         {
             {
                 let mut s = self.state.lock().unwrap();
@@ -1117,27 +1222,31 @@ impl TVisioGuiApp {
 
         ui.add_space(6.0);
 
-        if ui
-            .add_sized(
-                [ui.available_width(), 32.0],
-                egui::Button::new(RichText::new("📡 Abrir Hotspot Direto 1-Hop (5GHz)").size(12.0)),
-            )
-            .on_hover_text("Abre o Mobile Hotspot do Windows para conexão direta celular-PC sem roteador")
-            .clicked()
+        if Self::glass_button(
+            ui,
+            "⚡ Abrir Hotspot Direto 1-Hop (5GHz)",
+            false,
+            Vec2::new(ui.available_width(), 32.0),
+        )
+        .on_hover_text("Abre o Mobile Hotspot do Windows para conexão direta celular-PC sem roteador")
+        .clicked()
         {
             open_mobile_hotspot_settings();
-            self.show_toast("Configurações do Hotspot abertas. Clique em 'Atualizar IPs' após ativar.");
+            self.show_toast(
+                "Configurações do Hotspot abertas. Clique em 'Atualizar IPs' após ativar.",
+            );
         }
 
         ui.add_space(6.0);
 
-        if ui
-            .add_sized(
-                [ui.available_width(), 32.0],
-                egui::Button::new(RichText::new("🛡 Liberar Portas no Firewall (UAC)").size(12.0)),
-            )
-            .on_hover_text("Cria regra automática no Firewall do Windows para as portas 8080 e 8443")
-            .clicked()
+        if Self::glass_button(
+            ui,
+            "⚙ Liberar Portas no Firewall (UAC)",
+            false,
+            Vec2::new(ui.available_width(), 32.0),
+        )
+        .on_hover_text("Cria regra automática no Firewall do Windows para as portas 8080 e 8443")
+        .clicked()
         {
             if register_firewall_rules(http_port, https_port) {
                 self.show_toast("Regras de Firewall registradas com sucesso!");
@@ -1256,6 +1365,7 @@ impl TVisioGuiApp {
                 .strong()
                 .color(Color32::from_rgb(203, 213, 225)),
         );
+        ui.add_space(3.0);
         ui.columns(5, |cols| {
             let presets = [
                 ("natural", "Natural"),
@@ -1265,8 +1375,7 @@ impl TVisioGuiApp {
                 ("bw", "P&B"),
             ];
             for (idx, (id, name)) in presets.into_iter().enumerate() {
-                if cols[idx]
-                    .selectable_label(preset == id, RichText::new(name).size(11.5))
+                if Self::glass_button(&mut cols[idx], name, preset == id, Vec2::new(0.0, 28.0))
                     .clicked()
                 {
                     let mut s = self.state.lock().unwrap();
@@ -1389,12 +1498,17 @@ impl TVisioGuiApp {
                 .strong()
                 .color(Color32::from_rgb(203, 213, 225)),
         );
+        ui.add_space(3.0);
         ui.columns(4, |cols| {
             let caps = [(4.0f32, "4ms"), (8.0, "8ms"), (16.0, "16ms"), (33.0, "Auto")];
             for (idx, (val, label)) in caps.into_iter().enumerate() {
-                if cols[idx]
-                    .selectable_label((shutter_ms - val).abs() < 0.5, label)
-                    .clicked()
+                if Self::glass_button(
+                    &mut cols[idx],
+                    label,
+                    (shutter_ms - val).abs() < 0.5,
+                    Vec2::new(0.0, 28.0),
+                )
+                .clicked()
                 {
                     let mut s = self.state.lock().unwrap();
                     s.settings.data.shutter_cap_ms = val;
@@ -1407,7 +1521,7 @@ impl TVisioGuiApp {
             }
         });
 
-        ui.add_space(6.0);
+        ui.add_space(8.0);
 
         if ui
             .checkbox(
@@ -1539,14 +1653,15 @@ impl TVisioGuiApp {
             s.settings.save();
         }
 
-        ui.add_space(16.0);
+        ui.add_space(14.0);
 
-        if ui
-            .add_sized(
-                [ui.available_width(), 32.0],
-                egui::Button::new(RichText::new("📂 Abrir Pasta de Dados Locais (_local)").size(12.0)),
-            )
-            .clicked()
+        if Self::glass_button(
+            ui,
+            "⚙ Abrir Pasta de Dados Locais (_local)",
+            false,
+            Vec2::new(ui.available_width(), 32.0),
+        )
+        .clicked()
         {
             open_local_data_folder(&base_dir.join("_local"));
         }
@@ -1559,8 +1674,11 @@ impl TVisioGuiApp {
                 egui::Button::new(
                     RichText::new("⏻ Encerrar tVisio Completamente")
                         .size(12.0)
+                        .strong()
                         .color(Color32::from_rgb(248, 113, 113)),
-                ),
+                )
+                .fill(Color32::from_rgba_unmultiplied(239, 68, 68, 25))
+                .stroke(Stroke::new(1.0_f32, Color32::from_rgb(239, 68, 68))),
             )
             .clicked()
         {
