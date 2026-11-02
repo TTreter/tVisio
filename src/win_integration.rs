@@ -212,6 +212,7 @@ pub fn find_tvisio_hwnd() -> HWND {
 }
 
 /// Verifica se a janela nativa do tVisio está minimizada (`IsIconic`).
+#[allow(dead_code)]
 pub fn is_native_window_minimized() -> bool {
     #[cfg(target_os = "windows")]
     unsafe {
@@ -224,6 +225,7 @@ pub fn is_native_window_minimized() -> bool {
 }
 
 /// Oculta a janela nativa da Barra de Tarefas do Windows (`SW_HIDE`), mantendo o app na Bandeja do Sistema.
+#[allow(dead_code)]
 pub fn hide_native_window_to_tray() {
     #[cfg(target_os = "windows")]
     unsafe {

@@ -2,6 +2,7 @@
 //! =======================================================================================
 //! Gerencia:
 //! - Entrega do WebApp PWA móvel via HTTPS (Porta 8443) e HTTP (Porta 8080 para USB Localhost).
+//! - Entrega da Interface Desktop Translucent Glass UI v2.0 (`/desktop`, `/ws/desktop`).
 //! - Canal de streaming binário `/ws/stream` de ultra-baixa latência (Zero-Queue com ACK imediato).
 //! - Pulso inteligente Anti-PSM de 1 byte (`0x01`) mantendo o rádio Wi-Fi móvel fora de micro-sleep.
 //! - Sincronização em tempo real com a Interface Gráfica Nativa Desktop (`SharedState`).
@@ -9,10 +10,15 @@
 use crate::cert_manager::ensure_ssl_certificates;
 use crate::network_utils::{discover_network_interfaces, generate_qr_code_assets, NetworkInterfaceInfo};
 use crate::settings::{
-    SettingsManager, ICON_ICO, ICON_PNG, ICON_SVG, MOBILE_CSS, MOBILE_INDEX_HTML, MOBILE_JS,
+    SettingsManager, DESKTOP_CSS, DESKTOP_INDEX_HTML, DESKTOP_JS, ICON_ICO, ICON_PNG, ICON_SVG,
+    MOBILE_CSS, MOBILE_INDEX_HTML, MOBILE_JS,
 };
 use crate::vcam_engine::VirtualCamEngine;
-use crate::win_integration::{set_start_with_windows, show_native_window};
+use crate::win_integration::{
+    get_start_with_windows, install_vcam_driver_offline, open_local_data_folder,
+    open_mobile_hotspot_settings, register_firewall_rules, set_start_with_windows,
+    show_native_window,
+};
 
 use axum::{
     extract::{
@@ -82,6 +88,7 @@ pub struct TVisioAppState {
 
     // Sinalizadores de ciclo de vida da janela nativa
     pub window_show_requested: bool,
+    pub pip_mode_requested: Option<bool>,
     pub quit_requested: bool,
 }
 
@@ -91,9 +98,11 @@ static ACTIVE_MOBILE_CLIENTS: AtomicUsize = AtomicUsize::new(0);
 
 impl TVisioAppState {
     pub fn new(base_dir: PathBuf, http_port: u16, https_port: u16) -> Self {
-        let settings = SettingsManager::new(&base_dir);
+        let mut settings = SettingsManager::new(&base_dir);
         if settings.data.start_with_windows {
             set_start_with_windows(true);
+        } else if get_start_with_windows() {
+            settings.data.start_with_windows = true;
         }
 
         let vcam = VirtualCamEngine::new(&settings.data);
@@ -132,6 +141,7 @@ impl TVisioAppState {
             mobile_battery_charging: false,
             mobile_cmd_tx,
             window_show_requested: false,
+            pip_mode_requested: None,
             quit_requested: false,
         };
         app_state.rebuild_qr_code();
@@ -174,13 +184,64 @@ impl TVisioAppState {
             let _ = self.mobile_cmd_tx.send(msg);
         }
     }
+
+    pub fn build_telemetry_json(&self) -> Value {
+        json!({
+            "type": "telemetry",
+            "mobile_connected": self.mobile_connected,
+            "device_info": self.mobile_device_info,
+            "shutter_cap_ms": self.settings.data.shutter_cap_ms,
+            "g2g_ms": self.glass_to_glass_ms,
+            "rtt_ms": self.rtt_ms,
+            "active_protocol": self.active_protocol,
+            "battery_level": self.mobile_battery_level,
+            "battery_charging": self.mobile_battery_charging,
+            "torch_on": self.mobile_torch_on,
+            "af_locked": self.mobile_af_locked,
+            "eco_mode": self.mobile_eco_mode,
+            "anti_psm": self.settings.data.anti_psm_enabled,
+            "cameras": self.mobile_cameras,
+            "selected_cam_id": self.mobile_selected_cam_id,
+            "interfaces": self.interfaces,
+            "selected_ip": self.selected_ip,
+            "pairing_url": self.pairing_url(),
+            "vcam": {
+                "driver_active": self.vcam.shm.driver_registered,
+                "backend_name": self.vcam.shm.backend_status_label(),
+                "resolution": format!("{}x{} ({})", self.vcam.width, self.vcam.height, self.vcam.resolution_label()),
+                "decode_ms": self.vcam.last_decode_ms,
+                "fps": self.vcam.current_fps,
+                "frozen": self.vcam.frozen,
+                "mirror_horizontal": self.vcam.mirror_horizontal,
+                "brightness_gain": self.vcam.brightness_gain,
+                "contrast": self.vcam.contrast,
+                "color_temp": self.vcam.color_temp,
+                "color_preset": self.vcam.color_preset,
+                "zoom_level": self.vcam.zoom_level,
+                "pan_x": self.vcam.pan_x,
+                "pan_y": self.vcam.pan_y,
+            },
+            "app_settings": {
+                "start_with_windows": self.settings.data.start_with_windows,
+                "start_minimized": self.settings.data.start_minimized,
+                "minimize_to_tray": self.settings.data.minimize_to_tray,
+                "close_to_tray": self.settings.data.close_to_tray,
+                "auto_eco_oled": self.settings.data.auto_eco_oled,
+                "auto_start_vcam": self.settings.data.auto_start_vcam,
+            }
+        })
+    }
 }
 
-/// Constrói o roteador Axum com todas as rotas do transmissor móvel e APIs locais.
+/// Constrói o roteador Axum com todas as rotas Desktop, PWA Mobile e APIs locais.
 pub fn build_router(state: SharedState) -> Router {
     Router::new()
-        .route("/", get(handle_mobile_index))
+        .route("/", get(handle_root_index))
+        .route("/desktop", get(handle_desktop_index))
+        .route("/mobile", get(handle_mobile_index))
         .route("/manifest.json", get(handle_manifest_json))
+        .route("/desktop-static/styles.css", get(handle_desktop_css))
+        .route("/desktop-static/app.js", get(handle_desktop_js))
         .route("/mobile-static/mobile.css", get(handle_mobile_css))
         .route("/mobile-static/mobile.js", get(handle_mobile_js))
         .route("/assets/icon.svg", get(handle_icon_svg))
@@ -189,8 +250,15 @@ pub fn build_router(state: SharedState) -> Router {
         .route("/api/qr", get(handle_qr_png))
         .route("/api/cert", get(handle_cert_download))
         .route("/api/window/show", post(handle_window_show))
+        .route("/api/install-vcam", post(handle_install_vcam))
+        .route("/api/hotspot", post(handle_open_hotspot))
+        .route("/api/firewall", post(handle_firewall))
+        .route("/api/regenerate-token", post(handle_regenerate_token))
+        .route("/api/open-data-dir", post(handle_open_data_dir))
+        .route("/api/app/quit", post(handle_app_quit))
         .route("/api/webrtc/offer", post(handle_webrtc_offer))
         .route("/ws/stream", get(handle_mobile_ws))
+        .route("/ws/desktop", get(handle_desktop_ws))
         .with_state(state)
 }
 
@@ -208,7 +276,7 @@ pub async fn run_background_servers(state: SharedState) {
     let app_http = build_router(state.clone());
     let app_https = build_router(state.clone());
 
-    // Servidor HTTP (Porta 8080 — USB ADB Localhost e Redirecionamento Automático HTTPS)
+    // Servidor HTTP (Porta 8080 — Janela Nativa Desktop e USB ADB Localhost)
     let http_addr = SocketAddr::from(([0, 0, 0, 0], http_port));
     tokio::spawn(async move {
         let _ = axum_server::bind(http_addr)
@@ -233,12 +301,66 @@ pub async fn run_background_servers(state: SharedState) {
 // Handlers HTTP e Ativos Estáticos Embutidos
 // -----------------------------------------------------------------------------
 
+async fn handle_root_index(
+    State(state): State<SharedState>,
+    headers: HeaderMap,
+    Query(params): Query<HashMap<String, String>>,
+) -> Response {
+    // Se possui token `?t=` na query string, trata-se do pareamento móvel via QR Code
+    let has_token_param = params.contains_key("t");
+    let host_val = headers
+        .get(header::HOST)
+        .and_then(|h| h.to_str().ok())
+        .unwrap_or("");
+    let hostname = host_val.split(':').next().unwrap_or("");
+    let port_part = host_val.split(':').nth(1).unwrap_or("");
+
+    let (http_port, https_port, token) = {
+        let s = state.lock().unwrap();
+        (
+            s.http_port.to_string(),
+            s.https_port,
+            s.settings.data.session_token.clone(),
+        )
+    };
+
+    let is_localhost = hostname == "localhost" || hostname == "127.0.0.1";
+
+    // Se acessado de um IP da rede local via HTTP, redireciona para HTTPS mobile
+    if port_part == http_port && !is_localhost {
+        let t = params.get("t").cloned().unwrap_or(token);
+        let https_url = format!("https://{hostname}:{https_port}/?t={t}");
+        return Redirect::temporary(&https_url).into_response();
+    }
+
+    // Se for localhost sem `?t=` na porta HTTP, entrega a Interface Desktop Translucent Glass UI
+    if is_localhost && !has_token_param && port_part == http_port {
+        return (
+            [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+            DESKTOP_INDEX_HTML,
+        )
+            .into_response();
+    }
+
+    (
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        MOBILE_INDEX_HTML,
+    )
+        .into_response()
+}
+
+async fn handle_desktop_index() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        DESKTOP_INDEX_HTML,
+    )
+}
+
 async fn handle_mobile_index(
     State(state): State<SharedState>,
     headers: HeaderMap,
     Query(params): Query<HashMap<String, String>>,
 ) -> Response {
-    // Se acessado via HTTP em IP de rede local (não localhost), redireciona para HTTPS
     if let Some(host_val) = headers.get(header::HOST).and_then(|h| h.to_str().ok()) {
         let hostname = host_val.split(':').next().unwrap_or("");
         let port_part = host_val.split(':').nth(1).unwrap_or("");
@@ -279,6 +401,17 @@ async fn handle_manifest_json(State(state): State<SharedState>) -> Json<Value> {
             "type": "image/png"
         }]
     }))
+}
+
+async fn handle_desktop_css() -> impl IntoResponse {
+    ([(header::CONTENT_TYPE, "text/css; charset=utf-8")], DESKTOP_CSS)
+}
+
+async fn handle_desktop_js() -> impl IntoResponse {
+    (
+        [(header::CONTENT_TYPE, "application/javascript; charset=utf-8")],
+        DESKTOP_JS,
+    )
 }
 
 async fn handle_mobile_css() -> impl IntoResponse {
@@ -351,6 +484,61 @@ async fn handle_window_show(State(state): State<SharedState>) -> Json<Value> {
     Json(json!({ "ok": true }))
 }
 
+async fn handle_install_vcam(State(state): State<SharedState>) -> Json<Value> {
+    let base_dir = state.lock().unwrap().base_dir.clone();
+    let ok = install_vcam_driver_offline(&base_dir).unwrap_or(false);
+    let driver_active = if let Ok(mut s) = state.lock() {
+        s.vcam.shm.refresh_registration_status()
+    } else {
+        ok
+    };
+    Json(json!({ "ok": ok, "driver_active": driver_active }))
+}
+
+async fn handle_open_hotspot(State(state): State<SharedState>) -> Json<Value> {
+    open_mobile_hotspot_settings();
+    if let Ok(mut s) = state.lock() {
+        s.refresh_network_interfaces();
+    }
+    Json(json!({ "ok": true }))
+}
+
+async fn handle_firewall(State(state): State<SharedState>) -> Json<Value> {
+    let (http_port, https_port) = {
+        let s = state.lock().unwrap();
+        (s.http_port, s.https_port)
+    };
+    let ok = register_firewall_rules(http_port, https_port);
+    Json(json!({ "ok": ok }))
+}
+
+async fn handle_regenerate_token(State(state): State<SharedState>) -> Json<Value> {
+    let (token, pairing_url) = {
+        let mut s = state.lock().unwrap();
+        let tok = s.settings.regenerate_token();
+        s.rebuild_qr_code();
+        (tok, s.pairing_url())
+    };
+    Json(json!({ "ok": true, "token": token, "pairing_url": pairing_url }))
+}
+
+async fn handle_open_data_dir(State(state): State<SharedState>) -> Json<Value> {
+    let local_dir = state.lock().unwrap().base_dir.join("_local");
+    open_local_data_folder(&local_dir);
+    Json(json!({ "ok": true }))
+}
+
+async fn handle_app_quit(State(state): State<SharedState>) -> Json<Value> {
+    if let Ok(mut s) = state.lock() {
+        s.quit_requested = true;
+    }
+    tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(120)).await;
+        std::process::exit(0);
+    });
+    Json(json!({ "ok": true }))
+}
+
 async fn handle_webrtc_offer() -> Response {
     // Aciona imediatamente o motor WebSocket Binary Turbo Zero-Queue no cliente móvel (30/60 FPS diretos)
     (
@@ -358,6 +546,268 @@ async fn handle_webrtc_offer() -> Response {
         Json(json!({ "mode": "ws_binary_turbo_zero_queue" })),
     )
         .into_response()
+}
+
+// -----------------------------------------------------------------------------
+// WebSocket da Interface Desktop (/ws/desktop)
+// -----------------------------------------------------------------------------
+
+async fn handle_desktop_ws(
+    ws: WebSocketUpgrade,
+    State(state): State<SharedState>,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| handle_desktop_socket(socket, state))
+}
+
+async fn handle_desktop_socket(socket: WebSocket, state: SharedState) {
+    let (mut ws_sender, mut ws_receiver) = socket.split();
+    let (out_tx, mut out_rx) = tokio::sync::mpsc::unbounded_channel::<Message>();
+
+    // Envia telemetria inicial imediatamente ao conectar
+    if let Ok(s) = state.lock() {
+        let _ = out_tx.send(Message::Text(s.build_telemetry_json().to_string()));
+    }
+
+    // Task de telemetria periódica (a cada 400ms)
+    let state_telemetry = state.clone();
+    let out_tx_telemetry = out_tx.clone();
+    let telemetry_task = tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_millis(400)).await;
+            let msg_opt = state_telemetry
+                .lock()
+                .ok()
+                .map(|s| s.build_telemetry_json().to_string());
+            if let Some(msg) = msg_opt {
+                if out_tx_telemetry.send(Message::Text(msg)).is_err() {
+                    break;
+                }
+            }
+        }
+    });
+
+    // Task de envio de frames JPEG 360p para o Miniplayer (somente quando há novo frame e preview ativo)
+    let state_preview = state.clone();
+    let out_tx_preview = out_tx.clone();
+    let preview_task = tokio::spawn(async move {
+        let mut last_seq = 0u64;
+        loop {
+            tokio::time::sleep(Duration::from_millis(32)).await;
+            let jpeg_opt = {
+                if let Ok(s) = state_preview.lock() {
+                    if s.mobile_connected
+                        && s.vcam.miniplayer_enabled
+                        && s.vcam.preview_seq != last_seq
+                        && s.vcam.preview_seq > 0
+                    {
+                        last_seq = s.vcam.preview_seq;
+                        Some(s.vcam.encode_preview_jpeg())
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            };
+            if let Some(jpeg_bytes) = jpeg_opt {
+                if !jpeg_bytes.is_empty() {
+                    if out_tx_preview.send(Message::Binary(jpeg_bytes)).is_err() {
+                        break;
+                    }
+                }
+            }
+        }
+    });
+
+    let writer_task = tokio::spawn(async move {
+        while let Some(msg) = out_rx.recv().await {
+            if ws_sender.send(msg).await.is_err() {
+                break;
+            }
+        }
+    });
+
+    // Recepção de comandos da Interface Desktop
+    while let Some(Ok(msg)) = ws_receiver.next().await {
+        if let Message::Text(text) = msg {
+            if let Ok(cmd) = serde_json::from_str::<Value>(&text) {
+                let action = cmd.get("action").and_then(|v| v.as_str()).unwrap_or("");
+                let mut send_immediate_telemetry = true;
+
+                if let Ok(mut s) = state.lock() {
+                    match action {
+                        "switch_camera" => {
+                            s.send_mobile_command(json!({ "command": "switch_camera" }));
+                        }
+                        "toggle_af_lock" => {
+                            let target = !s.mobile_af_locked;
+                            s.mobile_af_locked = target;
+                            s.send_mobile_command(json!({ "command": "af_lock", "locked": target }));
+                        }
+                        "toggle_torch" => {
+                            let target = !s.mobile_torch_on;
+                            s.mobile_torch_on = target;
+                            s.send_mobile_command(json!({ "command": "torch", "on": target }));
+                        }
+                        "toggle_freeze" => {
+                            s.vcam.frozen = !s.vcam.frozen;
+                        }
+                        "toggle_mirror_h" => {
+                            s.vcam.mirror_horizontal = !s.vcam.mirror_horizontal;
+                            s.settings.data.mirror_horizontal = s.vcam.mirror_horizontal;
+                            s.settings.save();
+                        }
+                        "rotate" => {
+                            s.vcam.rotation = (s.vcam.rotation + 90) % 360;
+                            s.settings.data.rotation = s.vcam.rotation;
+                            s.settings.save();
+                        }
+                        "toggle_eco_mode" => {
+                            let target = !s.mobile_eco_mode;
+                            s.mobile_eco_mode = target;
+                            s.send_mobile_command(json!({ "command": "eco_mode", "enabled": target }));
+                        }
+                        "set_miniplayer_enabled" => {
+                            if let Some(en) = cmd.get("enabled").and_then(|v| v.as_bool()) {
+                                s.vcam.miniplayer_enabled = en;
+                            }
+                        }
+                        "set_pip_mode" => {
+                            if let Some(en) = cmd.get("enabled").and_then(|v| v.as_bool()) {
+                                s.pip_mode_requested = Some(en);
+                            }
+                        }
+                        "select_camera_device" => {
+                            if let Some(dev_id) = cmd.get("device_id").and_then(|v| v.as_str()) {
+                                s.mobile_selected_cam_id = dev_id.to_string();
+                                s.send_mobile_command(json!({
+                                    "command": "select_camera",
+                                    "device_id": dev_id
+                                }));
+                            }
+                        }
+                        "select_interface" => {
+                            if let Some(ip) = cmd.get("ip").and_then(|v| v.as_str()) {
+                                s.selected_ip = ip.to_string();
+                                s.rebuild_qr_code();
+                            }
+                        }
+                        "refresh_interfaces" => {
+                            s.refresh_network_interfaces();
+                        }
+                        "set_shutter_cap" => {
+                            if let Some(sh) = cmd.get("shutter_ms").and_then(|v| v.as_f64()) {
+                                s.settings.data.shutter_cap_ms = sh as f32;
+                                s.settings.save();
+                                s.send_mobile_command(json!({
+                                    "command": "shutter_cap",
+                                    "shutter_ms": sh
+                                }));
+                            }
+                        }
+                        "set_color_studio" => {
+                            send_immediate_telemetry = false;
+                            if let Some(g) = cmd.get("brightness_gain").and_then(|v| v.as_f64()) {
+                                s.vcam.brightness_gain = g as f32;
+                                s.settings.data.brightness_gain = g as f32;
+                            }
+                            if let Some(c) = cmd.get("contrast").and_then(|v| v.as_f64()) {
+                                s.vcam.contrast = c as f32;
+                                s.settings.data.contrast = c as f32;
+                            }
+                            if let Some(gm) = cmd.get("gamma").and_then(|v| v.as_f64()) {
+                                s.vcam.gamma = gm as f32;
+                                s.settings.data.gamma = gm as f32;
+                            }
+                            if let Some(t) = cmd.get("color_temp").and_then(|v| v.as_f64()) {
+                                s.vcam.color_temp = t as f32;
+                                s.settings.data.color_temp = t as f32;
+                            }
+                            if let Some(p) = cmd.get("color_preset").and_then(|v| v.as_str()) {
+                                s.vcam.color_preset = p.to_string();
+                                s.settings.data.color_preset = p.to_string();
+                            }
+                            s.vcam.rebuild_color_lut();
+                            s.settings.save();
+                        }
+                        "set_eptz" => {
+                            send_immediate_telemetry = false;
+                            if let Some(z) = cmd.get("zoom_level").and_then(|v| v.as_f64()) {
+                                s.vcam.zoom_level = (z as f32).clamp(1.0, 3.0);
+                                s.settings.data.zoom_level = s.vcam.zoom_level;
+                            }
+                            if let Some(px) = cmd.get("pan_x").and_then(|v| v.as_f64()) {
+                                s.vcam.pan_x = (px as f32).clamp(-1.0, 1.0);
+                                s.settings.data.pan_x = s.vcam.pan_x;
+                            }
+                            if let Some(py) = cmd.get("pan_y").and_then(|v| v.as_f64()) {
+                                s.vcam.pan_y = (py as f32).clamp(-1.0, 1.0);
+                                s.settings.data.pan_y = s.vcam.pan_y;
+                            }
+                            s.settings.save();
+                        }
+                        "toggle_anti_psm" => {
+                            s.settings.data.anti_psm_enabled = !s.settings.data.anti_psm_enabled;
+                            s.settings.save();
+                        }
+                        "set_resolution" => {
+                            if let Some(prof) = cmd.get("profile").and_then(|v| v.as_str()) {
+                                s.settings.data.resolution_profile = prof.to_string();
+                                s.settings.save();
+                                let parts: Vec<&str> = prof.split('@').collect();
+                                let res_parts: Vec<&str> =
+                                    parts.first().unwrap_or(&"1280x720").split('x').collect();
+                                let w: u32 = res_parts.first().and_then(|x| x.parse().ok()).unwrap_or(1280);
+                                let h: u32 = res_parts.get(1).and_then(|x| x.parse().ok()).unwrap_or(720);
+                                let fps: u32 = parts.get(1).and_then(|x| x.parse().ok()).unwrap_or(30);
+                                s.send_mobile_command(json!({
+                                    "command": "set_resolution",
+                                    "width": w,
+                                    "height": h,
+                                    "fps": fps
+                                }));
+                            }
+                        }
+                        "set_app_settings" => {
+                            if let Some(v) = cmd.get("start_with_windows").and_then(|v| v.as_bool()) {
+                                s.settings.data.start_with_windows = v;
+                                set_start_with_windows(v);
+                            }
+                            if let Some(v) = cmd.get("start_minimized").and_then(|v| v.as_bool()) {
+                                s.settings.data.start_minimized = v;
+                            }
+                            if let Some(v) = cmd.get("minimize_to_tray").and_then(|v| v.as_bool()) {
+                                s.settings.data.minimize_to_tray = v;
+                            }
+                            if let Some(v) = cmd.get("close_to_tray").and_then(|v| v.as_bool()) {
+                                s.settings.data.close_to_tray = v;
+                            }
+                            if let Some(v) = cmd.get("auto_eco_oled").and_then(|v| v.as_bool()) {
+                                s.settings.data.auto_eco_oled = v;
+                                s.send_mobile_command(json!({
+                                    "command": "set_auto_eco",
+                                    "enabled": v
+                                }));
+                            }
+                            if let Some(v) = cmd.get("auto_start_vcam").and_then(|v| v.as_bool()) {
+                                s.settings.data.auto_start_vcam = v;
+                            }
+                            s.settings.save();
+                        }
+                        _ => {}
+                    }
+
+                    if send_immediate_telemetry {
+                        let _ = out_tx.send(Message::Text(s.build_telemetry_json().to_string()));
+                    }
+                }
+            }
+        }
+    }
+
+    telemetry_task.abort();
+    preview_task.abort();
+    writer_task.abort();
 }
 
 // -----------------------------------------------------------------------------

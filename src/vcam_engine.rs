@@ -390,4 +390,23 @@ impl VirtualCamEngine {
             "Aguardando Stream".to_string()
         }
     }
+
+    /// Codifica o buffer de preview 640x360 em JPEG rápido (qualidade 78) para o WebSocket `/ws/desktop`.
+    pub fn encode_preview_jpeg(&self) -> Vec<u8> {
+        let mut rgb = Vec::with_capacity((PREVIEW_WIDTH * PREVIEW_HEIGHT * 3) as usize);
+        for chunk in self.preview_rgba.chunks_exact(4) {
+            rgb.push(chunk[0]);
+            rgb.push(chunk[1]);
+            rgb.push(chunk[2]);
+        }
+        let mut jpeg_buf = Vec::with_capacity(32 * 1024);
+        let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg_buf, 78);
+        let _ = encoder.encode(
+            &rgb,
+            PREVIEW_WIDTH,
+            PREVIEW_HEIGHT,
+            image::ExtendedColorType::Rgb8,
+        );
+        jpeg_buf
+    }
 }

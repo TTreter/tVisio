@@ -12,13 +12,9 @@ name = "tVisio"
 path = "src/main.rs"
 
 [dependencies]
-# Interface Gráfica Nativa Desktop (OpenGL)
-eframe = { version = "0.31", default-features = false, features = [
-    "default_fonts",
-    "glow",
-    "persistence",
-] }
-egui = "0.31"
+# Janela Nativa Desktop Win32 (tao + wry)
+tao = "0.30"
+wry = "0.47"
 
 # Runtime Assíncrono Multithread e Servidor Web/WebSocket de Baixa Latência
 tokio = { version = "1.40", features = ["full"] }

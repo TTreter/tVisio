@@ -11,6 +11,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 // Ativos estáticos embutidos diretamente no executável (.exe 100% autônomo e portátil)
+pub static DESKTOP_INDEX_HTML: &[u8] = include_bytes!("desktop/index.html");
+pub static DESKTOP_CSS: &[u8] = include_bytes!("desktop/styles.css");
+pub static DESKTOP_JS: &[u8] = include_bytes!("desktop/app.js");
+
 pub static MOBILE_INDEX_HTML: &[u8] = include_bytes!("mobile/index.html");
 pub static MOBILE_CSS: &[u8] = include_bytes!("mobile/mobile.css");
 pub static MOBILE_JS: &[u8] = include_bytes!("mobile/mobile.js");
@@ -21,6 +25,7 @@ pub static ICON_ICO: &[u8] = include_bytes!("../assets/icon.ico");
 
 pub static DRIVER_DLL_64: &[u8] = include_bytes!("../assets/driver/UnityCaptureFilter64.dll");
 pub static DRIVER_DLL_32: &[u8] = include_bytes!("../assets/driver/UnityCaptureFilter32.dll");
+pub static WEBVIEW2_LOADER_DLL: &[u8] = include_bytes!("../assets/driver/WebView2Loader.dll");
 
 /// Retorna o diretório base gravável onde a pasta `_local/` é mantida.
 /// Prioriza o diretório atual/ao lado do executável (Modo Portátil) e faz fallback
