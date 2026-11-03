@@ -731,6 +731,16 @@ async fn handle_desktop_socket(socket: WebSocket, state: SharedState) {
                                 }));
                             }
                         }
+                        "set_camera_name" => {
+                            if let Some(name) = cmd.get("name").and_then(|v| v.as_str()) {
+                                let trimmed = name.trim();
+                                if !trimmed.is_empty() {
+                                    s.settings.data.camera_display_name = trimmed.to_string();
+                                    s.settings.save();
+                                    crate::unity_capture::configure_tvisio_camera_name(Some(trimmed));
+                                }
+                            }
+                        }
                         "select_interface" => {
                             if let Some(ip) = cmd.get("ip").and_then(|v| v.as_str()) {
                                 s.selected_ip = ip.to_string();

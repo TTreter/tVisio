@@ -216,9 +216,27 @@
       document.querySelectorAll("#presetSegment .seg-btn").forEach((b) => {
         b.classList.toggle("active", b.dataset.preset === data.vcam.color_preset);
       });
+
+      if (data.app_settings) {
+        if (data.app_settings.resolution_profile) {
+          const resEl = document.getElementById("resolutionSelect");
+          if (resEl) resEl.value = data.app_settings.resolution_profile;
+        }
+        if (data.app_settings.camera_display_name) {
+          const nameEl = document.getElementById("txtCameraDisplayName");
+          if (nameEl) nameEl.value = data.app_settings.camera_display_name;
+        }
+      }
+
+      if (data.shutter_cap_ms !== undefined) {
+        const shutterVal = Math.round(data.shutter_cap_ms);
+        document.querySelectorAll("#shutterSegment .seg-btn").forEach((b) => {
+          b.classList.toggle("active", parseFloat(b.dataset.shutter) === shutterVal);
+        });
+      }
     }
 
-    // Sincroniza configurações de Sistema & Bandeja do Windows
+    // Sincroniza configurações de Sistema & Bandeja do Windows (sem sobrescrever campos em foco)
     if (data.app_settings) {
       const s = data.app_settings;
       const elStartWin = document.getElementById("chkStartWindows");
@@ -227,13 +245,14 @@
       const elCloseTray = document.getElementById("chkCloseToTray");
       const elAutoEco = document.getElementById("chkAutoEco");
       const elAutoVcam = document.getElementById("chkAutoStartVcam");
+      const activeEl = document.activeElement;
 
-      if (elStartWin) elStartWin.checked = !!s.start_with_windows;
-      if (elStartMin) elStartMin.checked = !!s.start_minimized;
-      if (elMinTray) elMinTray.checked = !!s.minimize_to_tray;
-      if (elCloseTray) elCloseTray.checked = !!s.close_to_tray;
-      if (elAutoEco) elAutoEco.checked = !!s.auto_eco_oled;
-      if (elAutoVcam) elAutoVcam.checked = !!s.auto_start_vcam;
+      if (elStartWin && activeEl !== elStartWin) elStartWin.checked = !!s.start_with_windows;
+      if (elStartMin && activeEl !== elStartMin) elStartMin.checked = !!s.start_minimized;
+      if (elMinTray && activeEl !== elMinTray) elMinTray.checked = !!s.minimize_to_tray;
+      if (elCloseTray && activeEl !== elCloseTray) elCloseTray.checked = !!s.close_to_tray;
+      if (elAutoEco && activeEl !== elAutoEco) elAutoEco.checked = !!s.auto_eco_oled;
+      if (elAutoVcam && activeEl !== elAutoVcam) elAutoVcam.checked = !!s.auto_start_vcam;
     }
 
     const chkAntiPsmEl = document.getElementById("chkAntiPsm");
@@ -574,6 +593,25 @@
     sendCommand({ action: "set_app_settings", auto_start_vcam: e.target.checked });
   });
 
+  const btnSaveCameraName = document.getElementById("btnSaveCameraName");
+  const txtCameraDisplayName = document.getElementById("txtCameraDisplayName");
+  if (btnSaveCameraName && txtCameraDisplayName) {
+    btnSaveCameraName.addEventListener("click", () => {
+      const name = txtCameraDisplayName.value.trim() || "tVisio Virtual Camera";
+      sendCommand({ action: "set_camera_name", name });
+      const prev = btnSaveCameraName.textContent;
+      btnSaveCameraName.textContent = "Salvo!";
+      setTimeout(() => {
+        btnSaveCameraName.textContent = prev;
+      }, 1800);
+    });
+    txtCameraDisplayName.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        btnSaveCameraName.click();
+      }
+    });
+  }
+
   // Ações de Segurança e Manutenção do Sistema
   document.getElementById("btnFirewall").addEventListener("click", async () => {
     const label = document.getElementById("btnFirewallText");
@@ -624,7 +662,7 @@
   });
 
   // --- Verificador de Atualizações do GitHub ---
-  const CURRENT_APP_VERSION = "v2.0.0";
+  const CURRENT_APP_VERSION = "v2.1.0";
   let latestGitHubRelease = null;
 
   function compareSemanticVersions(v1, v2) {

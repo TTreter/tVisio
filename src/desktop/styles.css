@@ -763,7 +763,8 @@ svg.paused-svg-icon {
   color: var(--accent-cyan);
 }
 
-.glass-select {
+.glass-select,
+.glass-input {
   width: 100%;
   padding: 8px 12px;
   border-radius: var(--radius-md);
@@ -773,12 +774,17 @@ svg.paused-svg-icon {
   font-size: 0.78rem;
   font-weight: 500;
   outline: none;
-  cursor: pointer;
   transition: border-color 0.18s ease;
 }
 
+.glass-select {
+  cursor: pointer;
+}
+
 .glass-select:hover,
-.glass-select:focus {
+.glass-select:focus,
+.glass-input:hover,
+.glass-input:focus {
   border-color: rgba(0, 240, 255, 0.5);
 }
 

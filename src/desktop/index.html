@@ -432,6 +432,17 @@
                   <span class="switch-slider"></span>
                 </label>
               </div>
+
+              <div class="control-row settings-row" style="flex-direction: column; align-items: stretch; gap: 8px;">
+                <div class="control-info">
+                  <span class="control-title">Nome da Câmera Virtual (DirectShow)</span>
+                  <span class="control-desc">Como o dispositivo aparece no OBS, Discord, Zoom e Meet</span>
+                </div>
+                <div style="display: flex; gap: 8px;">
+                  <input type="text" id="txtCameraDisplayName" class="glass-input" placeholder="tVisio Virtual Camera" maxlength="40" style="flex: 1;" />
+                  <button class="secondary-glass-btn compact-action-btn" id="btnSaveCameraName" style="padding: 6px 14px;">Salvar</button>
+                </div>
+              </div>
             </div>
 
             <div class="settings-section">
@@ -439,7 +450,7 @@
               <div class="settings-row" style="display: flex; flex-direction: column; gap: 8px;">
                 <div class="control-row" style="padding: 0; border: none;">
                   <div class="control-info">
-                    <span class="control-title">tVisio v2.0.0</span>
+                    <span class="control-title">tVisio v2.1.0</span>
                     <span class="control-desc" id="updateStatusText">Versão instalada no sistema</span>
                   </div>
                   <button class="secondary-glass-btn compact-action-btn" id="btnCheckUpdate" title="Verificar se há novas versões no GitHub">
