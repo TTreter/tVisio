@@ -28,27 +28,25 @@ pub static DRIVER_DLL_32: &[u8] = include_bytes!("../assets/driver/UnityCaptureF
 pub static WEBVIEW2_LOADER_DLL: &[u8] = include_bytes!("../assets/driver/WebView2Loader.dll");
 
 /// Retorna o diretório base gravável onde a pasta `_local/` é mantida.
-/// Prioriza o diretório atual/ao lado do executável (Modo Portátil) e faz fallback
-/// automático para `%LOCALAPPDATA%\tVisio` caso não haja permissão de escrita.
+/// Prioriza estritamente o diretório onde o executável tVisio.exe reside (Modo Portátil).
+/// Faz fallback automático para `%LOCALAPPDATA%\tVisio` caso o executável esteja
+/// em diretório protegido contra escrita (ex: `C:\Program Files\tVisio`).
 pub fn get_data_dir() -> PathBuf {
-    let candidates = [
-        std::env::current_dir().ok(),
-        std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|d| d.to_path_buf())),
-    ];
-
-    for candidate in candidates.into_iter().flatten() {
-        let test_local = candidate.join("_local");
-        if fs::create_dir_all(&test_local).is_ok() {
-            let probe = test_local.join(".write_test");
-            if fs::write(&probe, b"ok").is_ok() {
-                let _ = fs::remove_file(&probe);
-                return candidate;
+    // 1. Prioriza o diretório do próprio executável
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            let test_local = exe_dir.join("_local");
+            if fs::create_dir_all(&test_local).is_ok() {
+                let probe = test_local.join(".write_test");
+                if fs::write(&probe, b"ok").is_ok() {
+                    let _ = fs::remove_file(&probe);
+                    return exe_dir.to_path_buf();
+                }
             }
         }
     }
 
+    // 2. Fallback para %LOCALAPPDATA%\tVisio quando instalado em pasta do sistema
     if let Ok(local_appdata) = std::env::var("LOCALAPPDATA") {
         let fallback = PathBuf::from(local_appdata).join("tVisio");
         let _ = fs::create_dir_all(fallback.join("_local"));
@@ -89,6 +87,8 @@ pub struct Settings {
     pub shutter_cap_ms: f32,
     pub anti_psm_enabled: bool,
     pub resolution_profile: String,
+    pub selected_camera_id: String,
+    pub camera_display_name: String,
     // Integração Nativa com Windows e Comportamento da Janela
     pub start_with_windows: bool,
     pub start_minimized: bool,
@@ -116,6 +116,8 @@ impl Default for Settings {
             shutter_cap_ms: 8.0,
             anti_psm_enabled: false,
             resolution_profile: "1280x720@30".to_string(),
+            selected_camera_id: String::new(),
+            camera_display_name: "tVisio Virtual Camera".to_string(),
             start_with_windows: false,
             start_minimized: false,
             minimize_to_tray: true,
@@ -162,7 +164,12 @@ impl SettingsManager {
 
     pub fn save(&self) {
         if let Ok(json_str) = serde_json::to_string_pretty(&self.data) {
-            let _ = fs::write(&self.settings_path, json_str);
+            let tmp_path = self.settings_path.with_extension("tmp");
+            if fs::write(&tmp_path, &json_str).is_ok() {
+                let _ = fs::rename(&tmp_path, &self.settings_path);
+            } else {
+                let _ = fs::write(&self.settings_path, json_str);
+            }
         }
     }
 

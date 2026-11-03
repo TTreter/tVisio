@@ -113,6 +113,7 @@ impl TVisioAppState {
             .unwrap_or_else(|| "127.0.0.1".to_string());
 
         let (mobile_cmd_tx, _) = broadcast::channel(64);
+        let initial_camera_id = settings.data.selected_camera_id.clone();
 
         let mut app_state = Self {
             base_dir,
@@ -136,7 +137,7 @@ impl TVisioAppState {
             mobile_af_locked: false,
             mobile_facing_mode: "environment".to_string(),
             mobile_cameras: Vec::new(),
-            mobile_selected_cam_id: String::new(),
+            mobile_selected_cam_id: initial_camera_id,
             mobile_battery_level: None,
             mobile_battery_charging: false,
             mobile_cmd_tx,
@@ -228,6 +229,9 @@ impl TVisioAppState {
                 "close_to_tray": self.settings.data.close_to_tray,
                 "auto_eco_oled": self.settings.data.auto_eco_oled,
                 "auto_start_vcam": self.settings.data.auto_start_vcam,
+                "resolution_profile": self.settings.data.resolution_profile,
+                "camera_display_name": self.settings.data.camera_display_name,
+                "selected_camera_id": self.settings.data.selected_camera_id,
             }
         })
     }
