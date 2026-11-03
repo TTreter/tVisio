@@ -29,6 +29,8 @@ AllowNoIcons=yes
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
+CloseApplications=yes
+RestartApplications=no
 
 ; Estilo e Compressão Ultra
 SetupIconFile=assets\icon.ico
@@ -63,8 +65,8 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 Name: "{commonstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--startup"; Tasks: startup; IconFilename: "{app}\icon.ico"
 
 [Run]
-Filename: "{sys}\regsvr32.exe"; Parameters: "/s ""{app}\_local\driver\UnityCaptureFilter64.dll"""; Flags: runhidden
-Filename: "{syswow64}\regsvr32.exe"; Parameters: "/s ""{app}\_local\driver\UnityCaptureFilter32.dll"""; Flags: runhidden; Check: Is64BitInstallMode
+Filename: "{sys}\regsvr32.exe"; Parameters: "/s /i:""UnityCaptureName=tVisio Virtual Camera"" ""{app}\_local\driver\UnityCaptureFilter64.dll"""; Flags: runhidden
+Filename: "{syswow64}\regsvr32.exe"; Parameters: "/s /i:""UnityCaptureName=tVisio Virtual Camera"" ""{app}\_local\driver\UnityCaptureFilter32.dll"""; Flags: runhidden; Check: Is64BitInstallMode
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
@@ -73,3 +75,23 @@ Filename: "{syswow64}\regsvr32.exe"; Parameters: "/u /s ""{app}\_local\driver\Un
 
 [UninstallDelete]
 Type: filesandordirs; Name: "{app}\_local"
+
+[Code]
+function InitializeSetup(): Boolean;
+var
+  ErrorCode: Integer;
+begin
+  // Encerra qualquer processo tVisio.exe em execução antes de instalar para evitar bloqueio de arquivo
+  Exec('taskkill.exe', '/F /IM tVisio.exe /T', '', SW_HIDE, ewWaitUntilTerminated, ErrorCode);
+  Sleep(350);
+  Result := True;
+end;
+
+function InitializeUninstall(): Boolean;
+var
+  ErrorCode: Integer;
+begin
+  Exec('taskkill.exe', '/F /IM tVisio.exe /T', '', SW_HIDE, ewWaitUntilTerminated, ErrorCode);
+  Sleep(350);
+  Result := True;
+end;

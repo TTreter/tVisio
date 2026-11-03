@@ -654,6 +654,16 @@ async fn handle_update_launch(Json(payload): Json<Value>) -> Response {
             let _ = std::process::Command::new("cmd")
                 .args(["/C", "start", "", file_path])
                 .spawn();
+
+            // Se for o instalador de atualização, encerra a instância atual após breve delay
+            // para liberar o executável em disco e evitar erro de 'Acesso Negado' (código 5)
+            if file_path.to_lowercase().contains("setup") {
+                tokio::spawn(async move {
+                    tokio::time::sleep(Duration::from_millis(600)).await;
+                    std::process::exit(0);
+                });
+            }
+
             return Json(json!({ "ok": true })).into_response();
         } else {
             let _ = std::process::Command::new("explorer.exe")
