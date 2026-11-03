@@ -10,8 +10,8 @@
 use crate::cert_manager::ensure_ssl_certificates;
 use crate::network_utils::{discover_network_interfaces, generate_qr_code_assets, NetworkInterfaceInfo};
 use crate::settings::{
-    SettingsManager, DESKTOP_CSS, DESKTOP_INDEX_HTML, DESKTOP_JS, ICON_ICO, ICON_PNG, ICON_SVG,
-    MOBILE_CSS, MOBILE_INDEX_HTML, MOBILE_JS,
+    get_data_dir, SettingsManager, DESKTOP_CSS, DESKTOP_INDEX_HTML, DESKTOP_JS, ICON_ICO, ICON_PNG,
+    ICON_SVG, MOBILE_CSS, MOBILE_INDEX_HTML, MOBILE_JS,
 };
 use crate::vcam_engine::VirtualCamEngine;
 use crate::win_integration::{
@@ -232,9 +232,19 @@ impl TVisioAppState {
                 "resolution_profile": self.settings.data.resolution_profile,
                 "camera_display_name": self.settings.data.camera_display_name,
                 "selected_camera_id": self.settings.data.selected_camera_id,
+                "is_installed": is_installed_app(),
             }
         })
     }
+}
+
+pub fn is_installed_app() -> bool {
+    if let Ok(exe_path) = std::env::current_exe() {
+        if let Some(exe_dir) = exe_path.parent() {
+            return exe_dir.join("unins000.exe").exists();
+        }
+    }
+    false
 }
 
 /// Constrói o roteador Axum com todas as rotas Desktop, PWA Mobile e APIs locais.
@@ -260,6 +270,8 @@ pub fn build_router(state: SharedState) -> Router {
         .route("/api/regenerate-token", post(handle_regenerate_token))
         .route("/api/open-data-dir", post(handle_open_data_dir))
         .route("/api/open-external", post(handle_open_external))
+        .route("/api/app/update/download", post(handle_update_download))
+        .route("/api/app/update/launch", post(handle_update_launch))
         .route("/api/app/quit", post(handle_app_quit))
         .route("/api/webrtc/offer", post(handle_webrtc_offer))
         .route("/ws/stream", get(handle_mobile_ws))
@@ -559,6 +571,102 @@ async fn handle_app_quit(State(state): State<SharedState>) -> Json<Value> {
         std::process::exit(0);
     });
     Json(json!({ "ok": true }))
+}
+
+async fn handle_update_download(Json(payload): Json<Value>) -> Response {
+    let url = payload.get("url").and_then(|v| v.as_str()).unwrap_or("");
+    let filename = payload.get("filename").and_then(|v| v.as_str()).unwrap_or("");
+
+    if url.is_empty() || filename.is_empty() || !url.starts_with("https://github.com/") {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "ok": false, "error": "URL ou nome de arquivo inválido" })),
+        )
+            .into_response();
+    }
+
+    let safe_filename = std::path::Path::new(filename)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("tVisio-Update.exe")
+        .to_string();
+
+    let download_dir = if let Ok(profile) = std::env::var("USERPROFILE") {
+        let p = PathBuf::from(profile).join("Downloads");
+        if p.exists() {
+            p
+        } else {
+            get_data_dir().join("_local").join("updates")
+        }
+    } else {
+        get_data_dir().join("_local").join("updates")
+    };
+
+    let _ = std::fs::create_dir_all(&download_dir);
+    let target_path = download_dir.join(&safe_filename);
+    let target_str = target_path.to_string_lossy().to_string();
+    let url_string = url.to_string();
+
+    let download_res = tokio::task::spawn_blocking(move || {
+        let status = std::process::Command::new("curl.exe")
+            .args(["-L", "-s", "-f", "-o", &target_str, &url_string])
+            .status();
+
+        match status {
+            Ok(s) if s.success() => Ok(target_str),
+            Ok(s) => Err(format!("curl finalizou com erro ({:?})", s.code())),
+            Err(e) => Err(format!("Falha ao executar curl: {e}")),
+        }
+    })
+    .await;
+
+    match download_res {
+        Ok(Ok(saved_path)) => Json(json!({
+            "ok": true,
+            "file_path": saved_path,
+            "filename": safe_filename,
+            "is_installer": safe_filename.to_lowercase().ends_with(".exe")
+        }))
+        .into_response(),
+        Ok(Err(err)) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "ok": false, "error": err })),
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "ok": false, "error": e.to_string() })),
+        )
+            .into_response(),
+    }
+}
+
+async fn handle_update_launch(Json(payload): Json<Value>) -> Response {
+    let file_path = payload.get("file_path").and_then(|v| v.as_str()).unwrap_or("");
+    let path = PathBuf::from(file_path);
+    if path.exists() {
+        if path
+            .extension()
+            .and_then(|e| e.to_str())
+            .map(|s| s.to_lowercase())
+            == Some("exe".to_string())
+        {
+            let _ = std::process::Command::new("cmd")
+                .args(["/C", "start", "", file_path])
+                .spawn();
+            return Json(json!({ "ok": true })).into_response();
+        } else {
+            let _ = std::process::Command::new("explorer.exe")
+                .args(["/select,", file_path])
+                .spawn();
+            return Json(json!({ "ok": true })).into_response();
+        }
+    }
+    (
+        StatusCode::NOT_FOUND,
+        Json(json!({ "ok": false, "error": "Arquivo não encontrado no disco" })),
+    )
+        .into_response()
 }
 
 async fn handle_webrtc_offer() -> Response {

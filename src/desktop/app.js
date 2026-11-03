@@ -253,6 +253,7 @@
       if (elCloseTray && activeEl !== elCloseTray) elCloseTray.checked = !!s.close_to_tray;
       if (elAutoEco && activeEl !== elAutoEco) elAutoEco.checked = !!s.auto_eco_oled;
       if (elAutoVcam && activeEl !== elAutoVcam) elAutoVcam.checked = !!s.auto_start_vcam;
+      if (s.is_installed !== undefined) isAppInstalled = !!s.is_installed;
     }
 
     const chkAntiPsmEl = document.getElementById("chkAntiPsm");
@@ -661,9 +662,12 @@
     }, 150);
   });
 
-  // --- Verificador de Atualizações do GitHub ---
-  const CURRENT_APP_VERSION = "v2.1.0";
+  // --- Verificador de Atualizações do GitHub e Download Automático ---
+  const CURRENT_APP_VERSION = "v2.1.1";
   let latestGitHubRelease = null;
+  let isAppInstalled = false;
+  let isDownloadingUpdate = false;
+  let downloadedUpdateFilePath = null;
 
   function compareSemanticVersions(v1, v2) {
     const clean1 = (v1 || "").replace(/^v/, "").split(".").map((x) => parseInt(x, 10) || 0);
@@ -675,6 +679,135 @@
       if (n1 < n2) return -1;
     }
     return 0;
+  }
+
+  function resolveTargetAssets(release) {
+    if (!release || !Array.isArray(release.assets) || release.assets.length === 0) {
+      return { primary: null, secondary: null, primaryLabel: "Baixar Atualização", secondaryLabel: "" };
+    }
+
+    const setupAsset = release.assets.find(
+      (a) => a.name.toLowerCase().includes("setup") && a.name.toLowerCase().endsWith(".exe")
+    );
+    const zipAsset = release.assets.find(
+      (a) => a.name.toLowerCase().includes("windows") && a.name.toLowerCase().endsWith(".zip")
+    );
+    const exeAsset = release.assets.find(
+      (a) => a.name.toLowerCase() === "tvisio.exe"
+    );
+
+    if (isAppInstalled) {
+      return {
+        primary: setupAsset || exeAsset || zipAsset || release.assets[0],
+        secondary: zipAsset || null,
+        primaryLabel: "Baixar Instalador Oficial (.exe)",
+        secondaryLabel: zipAsset ? "Ou baixar Pacote Portátil (.zip)" : "",
+      };
+    } else {
+      return {
+        primary: zipAsset || setupAsset || exeAsset || release.assets[0],
+        secondary: setupAsset || null,
+        primaryLabel: zipAsset ? "Baixar Atualização Portátil (.zip)" : "Baixar Instalador Oficial (.exe)",
+        secondaryLabel: setupAsset ? "Ou baixar Instalador Oficial (.exe)" : "",
+      };
+    }
+  }
+
+  async function startAssetDownload(asset) {
+    if (isDownloadingUpdate) return;
+    if (!asset || !asset.browser_download_url) {
+      const fallbackUrl = (latestGitHubRelease && latestGitHubRelease.html_url) || "https://github.com/TTreter/tVisio/releases/latest";
+      window.open(fallbackUrl, "_blank");
+      return;
+    }
+
+    const btnDownloadUpdate = document.getElementById("btnDownloadUpdate");
+    const btnDownloadUpdateText = document.getElementById("btnDownloadUpdateText");
+    const linkOpenDownloadsDir = document.getElementById("linkOpenDownloadsDir");
+    const linkDownloadAlt = document.getElementById("linkDownloadAlt");
+
+    isDownloadingUpdate = true;
+    if (btnDownloadUpdateText) {
+      btnDownloadUpdateText.textContent = `Baixando ${asset.name}...`;
+    }
+    if (btnDownloadUpdate) {
+      btnDownloadUpdate.disabled = true;
+      btnDownloadUpdate.style.opacity = "0.8";
+    }
+
+    try {
+      // 1. Tenta download direto pelo backend (curl para a pasta Downloads do Windows)
+      const res = await fetch("/api/app/update/download", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          url: asset.browser_download_url,
+          filename: asset.name,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok && data.ok && data.file_path) {
+        downloadedUpdateFilePath = data.file_path;
+        isDownloadingUpdate = false;
+        if (btnDownloadUpdate) {
+          btnDownloadUpdate.disabled = false;
+          btnDownloadUpdate.style.opacity = "1";
+          btnDownloadUpdate.style.background = "linear-gradient(135deg, #10B981 0%, #059669 100%)";
+        }
+
+        if (data.is_installer) {
+          if (btnDownloadUpdateText) btnDownloadUpdateText.textContent = "Instalar Agora (Clique para Executar)";
+        } else {
+          if (btnDownloadUpdateText) btnDownloadUpdateText.textContent = "Abrir Atualização Baixada";
+        }
+
+        if (linkOpenDownloadsDir) {
+          linkOpenDownloadsDir.style.display = "inline";
+          linkOpenDownloadsDir.onclick = (e) => {
+            e.preventDefault();
+            fetch("/api/app/update/launch", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ file_path: downloadedUpdateFilePath }),
+            });
+          };
+        }
+
+        if (linkDownloadAlt) {
+          linkDownloadAlt.style.display = "none";
+        }
+        return;
+      }
+      throw new Error(data.error || "Falha no download local");
+    } catch (err) {
+      console.warn("Falha no download nativo via backend, abrindo download direto no navegador:", err);
+      // 2. Fallback: abre o link direto do arquivo (.exe / .zip) no navegador padrão (Chrome/Edge baixa na hora)
+      try {
+        await fetch("/api/open-external", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url: asset.browser_download_url }),
+        });
+      } catch (_) {
+        window.open(asset.browser_download_url, "_blank");
+      }
+
+      if (btnDownloadUpdateText) {
+        btnDownloadUpdateText.textContent = "Download iniciado no navegador!";
+      }
+      setTimeout(() => {
+        if (btnDownloadUpdateText) {
+          btnDownloadUpdateText.textContent = "Baixar Novamente";
+        }
+        if (btnDownloadUpdate) {
+          btnDownloadUpdate.disabled = false;
+          btnDownloadUpdate.style.opacity = "1";
+        }
+      }, 3500);
+    } finally {
+      isDownloadingUpdate = false;
+    }
   }
 
   async function checkAppUpdates(isManual = false) {
@@ -706,7 +839,28 @@
           updateStatusText.textContent = `Nova versão ${latestTag} disponível!`;
           updateStatusText.style.color = "#00F0FF";
         }
-        if (updateActionRow) updateActionRow.style.display = "block";
+        if (updateActionRow) updateActionRow.style.display = "flex";
+
+        const { primary, secondary, primaryLabel, secondaryLabel } = resolveTargetAssets(release);
+        const btnDownloadUpdateText = document.getElementById("btnDownloadUpdateText");
+        if (btnDownloadUpdateText && !downloadedUpdateFilePath) {
+          btnDownloadUpdateText.textContent = primaryLabel;
+        }
+
+        const linkDownloadAlt = document.getElementById("linkDownloadAlt");
+        if (linkDownloadAlt) {
+          if (secondary && secondaryLabel && !downloadedUpdateFilePath) {
+            linkDownloadAlt.textContent = secondaryLabel;
+            linkDownloadAlt.style.display = "inline";
+            linkDownloadAlt.onclick = (e) => {
+              e.preventDefault();
+              startAssetDownload(secondary);
+            };
+          } else {
+            linkDownloadAlt.style.display = "none";
+          }
+        }
+
         if (versionBadge) {
           versionBadge.textContent = `UPDATE: ${latestTag}`;
           versionBadge.style.cursor = "pointer";
@@ -747,16 +901,20 @@
   const btnDownloadUpdate = document.getElementById("btnDownloadUpdate");
   if (btnDownloadUpdate) {
     btnDownloadUpdate.addEventListener("click", async () => {
-      const url = (latestGitHubRelease && latestGitHubRelease.html_url) || "https://github.com/TTreter/tVisio/releases/latest";
-      try {
-        await fetch("/api/open-external", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url }),
-        });
-      } catch (_) {
-        window.open(url, "_blank");
+      // Se já foi baixado, executa o instalador ou abre no Explorer
+      if (downloadedUpdateFilePath) {
+        try {
+          await fetch("/api/app/update/launch", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ file_path: downloadedUpdateFilePath }),
+          });
+        } catch (_) {}
+        return;
       }
+
+      const { primary } = resolveTargetAssets(latestGitHubRelease);
+      startAssetDownload(primary);
     });
   }
 

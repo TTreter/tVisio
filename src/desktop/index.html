@@ -450,7 +450,7 @@
               <div class="settings-row" style="display: flex; flex-direction: column; gap: 8px;">
                 <div class="control-row" style="padding: 0; border: none;">
                   <div class="control-info">
-                    <span class="control-title">tVisio v2.1.0</span>
+                    <span class="control-title">tVisio v2.1.1</span>
                     <span class="control-desc" id="updateStatusText">Versão instalada no sistema</span>
                   </div>
                   <button class="secondary-glass-btn compact-action-btn" id="btnCheckUpdate" title="Verificar se há novas versões no GitHub">
@@ -459,12 +459,16 @@
                     <span id="btnCheckUpdateText">Verificar</span>
                   </button>
                 </div>
-                <div id="updateActionRow" style="display: none; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.08);">
+                <div id="updateActionRow" style="display: none; padding-top: 6px; border-top: 1px solid rgba(255,255,255,0.08); flex-direction: column; gap: 6px;">
                   <button class="orbit-action-btn full-width-btn" id="btnDownloadUpdate" style="padding: 8px 12px; font-size: 0.76rem;">
                     <!-- Lucide: download -->
-                    <svg class="lucide-sm" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                    <svg class="lucide-sm" id="btnDownloadUpdateIcon" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
                     <span id="btnDownloadUpdateText">Baixar Nova Versão</span>
                   </button>
+                  <div id="updateSecondaryLinks" style="display: flex; justify-content: space-between; align-items: center; font-size: 0.70rem; padding: 2px 4px;">
+                    <a href="#" id="linkDownloadAlt" style="color: var(--accent-cyan); text-decoration: none; opacity: 0.85; cursor: pointer;"></a>
+                    <a href="#" id="linkOpenDownloadsDir" style="color: var(--text-muted); text-decoration: none; display: none; cursor: pointer;">Abrir Downloads</a>
+                  </div>
                 </div>
               </div>
             </div>
