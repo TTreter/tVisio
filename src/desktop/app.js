@@ -663,7 +663,7 @@
   });
 
   // --- Verificador de Atualizações do GitHub e Download Automático ---
-  const CURRENT_APP_VERSION = "v2.1.3";
+  const CURRENT_APP_VERSION = "v2.2.0";
   let latestGitHubRelease = null;
   let isAppInstalled = false;
   let isDownloadingUpdate = false;
