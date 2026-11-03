@@ -1,8 +1,8 @@
-; Script Inno Setup 6 para o Instalador Oficial do tVisio v2.1.2 (Windows x64)
+; Script Inno Setup 6 para o Instalador Oficial do tVisio v2.1.3 (Windows x64)
 ; ==============================================================================
 
 #define MyAppName "tVisio"
-#define MyAppVersion "2.1.2"
+#define MyAppVersion "2.1.3"
 #define MyAppPublisher "Tiago Treter (@TTreter)"
 #define MyAppURL "https://github.com/TTreter/tVisio"
 #define MyAppExeName "tVisio.exe"
@@ -42,7 +42,7 @@ DisableWelcomePage=no
 
 ; Saída do Instalador
 OutputDir=_local\dist
-OutputBaseFilename=tVisio-Setup-v2.1.2-x64
+OutputBaseFilename=tVisio-Setup-v2.1.3-x64
 
 [Languages]
 Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"

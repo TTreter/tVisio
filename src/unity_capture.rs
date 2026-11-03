@@ -325,6 +325,10 @@ impl UnityCaptureSharedMem {
     }
 
     /// Envia um quadro RGBA8 diretamente na memória compartilhada DirectShow do UnityCapture.
+    /// Como o padrão do DirectShow para DIBs (Device-Independent Bitmaps) é bottom-up
+    /// (linha 0 da memória é exibida na parte inferior da tela no OBS/Discord), este método
+    /// converte a imagem top-down de origem invertendo a ordem das linhas verticalmente,
+    /// garantindo que a imagem seja exibida perfeitamente orientada no OBS/Discord.
     pub fn send_frame_rgba_bottom_up(&mut self, width: u32, height: u32, rgba_data: &[u8]) -> bool {
         #[cfg(target_os = "windows")]
         unsafe {
@@ -376,8 +380,21 @@ impl UnityCaptureSharedMem {
             ptr::write_unaligned(header.add(6), 0i32);
             ptr::write_unaligned(header.add(7), 0x7FFF_FF37i32);
 
+            let row_stride = (width * 4) as usize;
             let pixel_dst = self.p_data.add(0x20);
-            ptr::copy_nonoverlapping(rgba_data.as_ptr(), pixel_dst, data_size);
+            let h = height as usize;
+
+            // Inversão vertical de linhas (Top-Down -> DirectShow Bottom-Up DIB)
+            // Copia linha a linha: linha 0 (topo) vai para linha (h - 1) no buffer DirectShow
+            for y in 0..h {
+                let src_offset = y * row_stride;
+                let dst_offset = (h - 1 - y) * row_stride;
+                ptr::copy_nonoverlapping(
+                    rgba_data.as_ptr().add(src_offset),
+                    pixel_dst.add(dst_offset),
+                    row_stride,
+                );
+            }
 
             ReleaseMutex(self.h_mutex);
 
@@ -451,7 +468,12 @@ mod tests {
         assert!(shm.try_connect_shm(), "Deveria conectar ou criar a memória compartilhada");
 
         // Cria frame dummy 1280x720 RGBA
-        let dummy_frame = vec![128u8; 1280 * 720 * 4];
+        // Primeira linha preenchida com valor 200 (topo) e última linha com valor 50 (base)
+        let mut dummy_frame = vec![0u8; 1280 * 720 * 4];
+        dummy_frame[0..1280 * 4].fill(200);
+        let last_row_start = (720 - 1) * 1280 * 4;
+        dummy_frame[last_row_start..last_row_start + 1280 * 4].fill(50);
+
         let sent = shm.send_frame_rgba_bottom_up(1280, 720, &dummy_frame);
         assert!(sent, "O envio de quadro RGBA para a memória compartilhada falhou");
 
@@ -468,9 +490,13 @@ mod tests {
             assert_eq!(*header_i32.add(5), 1, "resizemode deve ser 1 (LINEAR)");
             assert_eq!(*header_i32.add(6), 0, "mirrormode deve ser 0 (DISABLED)");
 
-            // Verifica primeiro pixel de dados em 0x20
+            // No DirectShow (bottom-up DIB), a linha 0 na memória corresponde à base da imagem (valor 50)
             let pixel_ptr = shm.p_data.add(0x20);
-            assert_eq!(*pixel_ptr, 128, "Pixel data não corresponde ao buffer enviado");
+            assert_eq!(*pixel_ptr, 50, "Linha 0 na memória deve ser a base da imagem (bottom-up DIB)");
+
+            // A última linha na memória corresponde ao topo da imagem (valor 200)
+            let last_ptr = pixel_ptr.add(last_row_start);
+            assert_eq!(*last_ptr, 200, "Última linha na memória deve ser o topo da imagem");
         }
     }
 }
