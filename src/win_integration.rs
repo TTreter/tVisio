@@ -122,15 +122,18 @@ pub fn install_vcam_driver_offline(base_dir: &Path) -> Result<bool, String> {
             .map_err(|e| format!("Falha ao extrair UnityCaptureFilter32.dll: {e}"))?;
     }
 
-    configure_tvisio_camera_name();
+    let camera_name = "tVisio Virtual Camera";
+    configure_tvisio_camera_name(Some(camera_name));
 
     #[cfg(target_os = "windows")]
     unsafe {
         let verb = to_wide("runas");
         let file = to_wide("cmd.exe");
         let commands = format!(
-            "/c regsvr32.exe /s \"{}\" & if exist \"%WINDIR%\\SysWOW64\\regsvr32.exe\" \"%WINDIR%\\SysWOW64\\regsvr32.exe\" /s \"{}\"",
+            "/c regsvr32.exe /s /i:\"UnityCaptureName={}\" \"{}\" & if exist \"%WINDIR%\\SysWOW64\\regsvr32.exe\" \"%WINDIR%\\SysWOW64\\regsvr32.exe\" /s /i:\"UnityCaptureName={}\" \"{}\"",
+            camera_name,
             dll64_path.display(),
+            camera_name,
             dll32_path.display()
         );
         let params = to_wide(&commands);
@@ -151,12 +154,12 @@ pub fn install_vcam_driver_offline(base_dir: &Path) -> Result<bool, String> {
     for _ in 0..12 {
         std::thread::sleep(Duration::from_millis(150));
         if is_unity_capture_registered() {
-            configure_tvisio_camera_name();
+            configure_tvisio_camera_name(Some(camera_name));
             return Ok(true);
         }
     }
 
-    configure_tvisio_camera_name();
+    configure_tvisio_camera_name(Some(camera_name));
     Ok(is_unity_capture_registered())
 }
 

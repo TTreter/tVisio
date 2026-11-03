@@ -67,8 +67,13 @@ pub struct VirtualCamEngine {
 
 impl VirtualCamEngine {
     pub fn new(initial: &Settings) -> Self {
+        let cam_name = if initial.camera_display_name.trim().is_empty() {
+            "tVisio Virtual Camera"
+        } else {
+            &initial.camera_display_name
+        };
         let mut engine = Self {
-            shm: UnityCaptureSharedMem::new(),
+            shm: UnityCaptureSharedMem::with_name(cam_name),
             width: VCAM_WIDTH,
             height: VCAM_HEIGHT,
             input_width: 0,
@@ -262,7 +267,7 @@ impl VirtualCamEngine {
 
         // 3. FUSÃO DE KERNELS (1-Pass): Amostragem + Rotação + Flip + LUT + Escrita Bottom-Up DirectShow
         let dst_w = self.width as usize;
-        let dst_h = self.height as usize;
+        let _dst_h = self.height as usize;
         let src_stride = (w_in * 3) as usize;
 
         for dy in 0..nh {
@@ -272,8 +277,8 @@ impl VirtualCamEngine {
                 ry = eff_h.saturating_sub(1).saturating_sub(ry);
             }
 
-            // Linha correspondente no buffer DirectShow (orientado de baixo para cima)
-            let out_row = dst_h - 1 - ((y_off + dy) as usize);
+            // Linha correspondente no buffer DirectShow (orientação padrão top-down)
+            let out_row = (y_off + dy) as usize;
             let out_row_base = (out_row * dst_w + (x_off as usize)) * 4;
 
             for dx in 0..nw {
@@ -348,13 +353,13 @@ impl VirtualCamEngine {
     /// a partir do canvas processado de 1280x720 (custo < 0.05ms, zero compressão JPEG).
     fn update_native_preview_buffers(&mut self) {
         let src_w = self.width as usize;
-        let src_h = self.height as usize;
+        let _src_h = self.height as usize;
         let pw = PREVIEW_WIDTH as usize;
         let ph = PREVIEW_HEIGHT as usize;
 
         for py in 0..ph {
-            // Como `vcam_rgba_bottom_up` é bottom-up, invertemos o índice Y para leitura top-down na GPU
-            let src_y = src_h - 1 - (py * 2);
+            // Buffer top-down correspondente à textura de exibição na GPU
+            let src_y = py * 2;
             let src_row_offset = src_y * src_w * 4;
             let dst_row_offset = py * pw * 4;
 

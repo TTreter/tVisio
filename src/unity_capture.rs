@@ -15,25 +15,48 @@ use windows_sys::Win32::{
     System::{
         Memory::{MapViewOfFile, OpenFileMappingA, UnmapViewOfFile, FILE_MAP_WRITE, MEMORY_MAPPED_VIEW_ADDRESS},
         Threading::{
-            CreateEventA, OpenEventA, OpenMutexW, ReleaseMutex, SetEvent, WaitForSingleObject,
+            CreateEventA, OpenEventA, OpenMutexW, ReleaseMutex, ResetEvent, SetEvent, WaitForSingleObject,
             EVENT_MODIFY_STATE,
         },
     },
 };
 
-const SYNCHRONIZE_RIGHT: u32 = 0x0010_0000;
+const SYNCHRONIZE_RIGHT: u32 = 0x0010_0000 | 0x0001; // SYNCHRONIZE | MUTEX_MODIFY_STATE
 const UNITY_CAPTURE_CLSID_64: &str = "{5C2CD55C-92AD-4999-8666-912BD3E70010}";
 const UNITY_CAPTURE_CLSID_32: &str = "{5C2CD55C-92AD-4999-8666-912BD3E70020}";
 
-/// Configura as chaves de registro do UnityCapture no Windows (`HKCU\Software\UnityCapture\Device 0`)
-/// para que o dispositivo DirectShow apareça como `"tVisio Virtual Camera"` no OBS, Discord, Meet, Zoom e Teams.
-pub fn configure_tvisio_camera_name() {
+/// Configura as chaves de registro do dispositivo DirectShow no Windows
+/// para que o dispositivo apareça com o nome customizado no OBS, Discord, Meet, Zoom e Teams.
+pub fn configure_tvisio_camera_name(custom_name: Option<&str>) {
+    let name = match custom_name {
+        Some(n) if !n.trim().is_empty() => n.trim(),
+        _ => "tVisio Virtual Camera",
+    };
+
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
     if let Ok((key, _)) = hkcu.create_subkey(r"Software\UnityCapture\Device 0") {
-        let _ = key.set_value("FriendlyName", &"tVisio Virtual Camera");
+        let _ = key.set_value("FriendlyName", &name);
         let _ = key.set_value("Timeout", &1000u32);
         let _ = key.set_value("ResizeMode", &1u32);
         let _ = key.set_value("MirrorMode", &0u32);
+    }
+
+    // Registra FriendlyName diretamente na categoria DirectShow do Windows (64-bit e 32-bit)
+    let hklm = RegKey::predef(HKEY_LOCAL_MACHINE);
+    let ds_path_64 = format!(
+        r"SOFTWARE\Classes\CLSID\{{860BB310-5D01-11d0-BD3B-00A0C911CE86}}\Instance\{}",
+        UNITY_CAPTURE_CLSID_64
+    );
+    if let Ok((key64, _)) = hklm.create_subkey(&ds_path_64) {
+        let _ = key64.set_value("FriendlyName", &name);
+    }
+
+    let ds_path_32 = format!(
+        r"SOFTWARE\WOW6432Node\Classes\CLSID\{{860BB310-5D01-11d0-BD3B-00A0C911CE86}}\Instance\{}",
+        UNITY_CAPTURE_CLSID_32
+    );
+    if let Ok((key32, _)) = hklm.create_subkey(&ds_path_32) {
+        let _ = key32.set_value("FriendlyName", &name);
     }
 }
 
@@ -82,7 +105,11 @@ impl Default for UnityCaptureSharedMem {
 
 impl UnityCaptureSharedMem {
     pub fn new() -> Self {
-        configure_tvisio_camera_name();
+        Self::with_name("tVisio Virtual Camera")
+    }
+
+    pub fn with_name(custom_name: &str) -> Self {
+        configure_tvisio_camera_name(Some(custom_name));
         let registered = is_unity_capture_registered();
         let mut instance = Self {
             #[cfg(target_os = "windows")]
@@ -102,9 +129,40 @@ impl UnityCaptureSharedMem {
         instance
     }
 
+    /// Fecha handles e limpa ponteiros quando o consumidor desconecta
+    pub fn reset_shm(&mut self) {
+        #[cfg(target_os = "windows")]
+        unsafe {
+            if !self.p_data.is_null() {
+                let view = MEMORY_MAPPED_VIEW_ADDRESS {
+                    Value: self.p_data as *mut c_void,
+                };
+                UnmapViewOfFile(view);
+                self.p_data = ptr::null_mut();
+            }
+            if !self.h_map_file.is_null() {
+                CloseHandle(self.h_map_file);
+                self.h_map_file = ptr::null_mut();
+            }
+            if !self.h_sent_event.is_null() {
+                CloseHandle(self.h_sent_event);
+                self.h_sent_event = ptr::null_mut();
+            }
+            if !self.h_want_event.is_null() {
+                CloseHandle(self.h_want_event);
+                self.h_want_event = ptr::null_mut();
+            }
+            if !self.h_mutex.is_null() {
+                CloseHandle(self.h_mutex);
+                self.h_mutex = ptr::null_mut();
+            }
+            self.consumer_connected = false;
+        }
+    }
+
     /// Atualiza o estado de registro do driver DirectShow no Windows.
     pub fn refresh_registration_status(&mut self) -> bool {
-        configure_tvisio_camera_name();
+        configure_tvisio_camera_name(None);
         self.driver_registered = is_unity_capture_registered();
         if self.driver_registered && !self.consumer_connected {
             self.try_connect_shm();
@@ -113,13 +171,19 @@ impl UnityCaptureSharedMem {
     }
 
     /// Tenta abrir os objetos de memória compartilhada criados pelo filtro DirectShow quando um consumidor
-    /// (OBS Studio, Discord, Meet, Zoom) abre a câmera "tVisio Virtual Camera".
+    /// (OBS Studio, Discord, Meet, Zoom) abre a câmera virtual.
     pub fn try_connect_shm(&mut self) -> bool {
         #[cfg(target_os = "windows")]
         unsafe {
             if !self.p_data.is_null() {
-                self.consumer_connected = true;
-                return true;
+                // Valida se o mutex ainda responde; se foi fechado pelo consumidor, reinicia handles
+                if !self.h_mutex.is_null() && WaitForSingleObject(self.h_mutex, 0) == 0 {
+                    ReleaseMutex(self.h_mutex);
+                    self.consumer_connected = true;
+                    return true;
+                } else {
+                    self.reset_shm();
+                }
             }
 
             if self.h_mutex.is_null() {
@@ -130,7 +194,9 @@ impl UnityCaptureSharedMem {
                 }
             }
 
-            WaitForSingleObject(self.h_mutex, 50);
+            if WaitForSingleObject(self.h_mutex, 40) != 0 {
+                return false;
+            }
 
             if self.h_want_event.is_null() {
                 self.h_want_event = CreateEventA(
@@ -175,8 +241,7 @@ impl UnityCaptureSharedMem {
         false
     }
 
-    /// Envia um quadro RGBA8 (orientado bottom-up para compatibilidade nativa DirectShow)
-    /// diretamente na memória compartilhada `UnityCapture_Data0`.
+    /// Envia um quadro RGBA8 diretamente na memória compartilhada `UnityCapture_Data0`.
     pub fn send_frame_rgba_bottom_up(&mut self, width: u32, height: u32, rgba_data: &[u8]) -> bool {
         #[cfg(target_os = "windows")]
         unsafe {
@@ -190,23 +255,34 @@ impl UnityCaptureSharedMem {
             }
 
             let max_size = ptr::read_unaligned(self.p_data as *const u32) as usize;
-            if max_size < data_size {
+            if max_size > 0 && max_size < data_size {
                 return false;
             }
 
-            // Timeout curto de 15ms para nunca bloquear o pipeline em tempo real
-            WaitForSingleObject(self.h_mutex, 15);
+            // Garante que o handle de Sent0 esteja conectado se o filtro iniciou após o tVisio
+            if self.h_sent_event.is_null() {
+                self.h_sent_event = OpenEventA(
+                    EVENT_MODIFY_STATE,
+                    0,
+                    b"UnityCapture_Sent0\0".as_ptr(),
+                );
+            }
+
+            // Timeout curto de 25ms para sincronização
+            if WaitForSingleObject(self.h_mutex, 25) != 0 {
+                return false;
+            }
 
             let header = self.p_data as *mut i32;
             // Layout exato de 32 bytes do cabeçalho SharedImageMemory do UnityCapture:
-            // [0x00] uint32 maxSize (somente leitura pelo produtor)
+            // [0x00] uint32 maxSize
             // [0x04] int32 width
             // [0x08] int32 height
             // [0x0C] int32 stride (em pixels = width)
             // [0x10] int32 format (0 = CAP_FORMAT_RGBA8)
             // [0x14] int32 resizemode (1 = Linear)
             // [0x18] int32 mirrormode (0 = Disabled)
-            // [0x1C] int32 timeout (0x7fffff37)
+            // [0x1C] int32 timeout (1000ms / 0x7FFFFF37)
             ptr::write_unaligned(header.add(1), width as i32);
             ptr::write_unaligned(header.add(2), height as i32);
             ptr::write_unaligned(header.add(3), width as i32);
@@ -219,8 +295,12 @@ impl UnityCaptureSharedMem {
             ptr::copy_nonoverlapping(rgba_data.as_ptr(), pixel_dst, data_size);
 
             ReleaseMutex(self.h_mutex);
+
             if !self.h_sent_event.is_null() {
                 SetEvent(self.h_sent_event);
+            }
+            if !self.h_want_event.is_null() {
+                ResetEvent(self.h_want_event);
             }
             return true;
         }
