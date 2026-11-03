@@ -378,7 +378,10 @@
    */
   function connectWebSocket() {
     const proto = location.protocol === "https:" ? "wss:" : "ws:";
-    ws = new WebSocket(`${proto}//${location.host}/ws/stream`);
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get("t") || "";
+    const tokenQuery = token ? `?t=${encodeURIComponent(token)}` : "";
+    ws = new WebSocket(`${proto}//${location.host}/ws/stream${tokenQuery}`);
     ws.binaryType = "arraybuffer";
 
     ws.onopen = () => {
@@ -559,7 +562,7 @@
             }
           },
           "image/jpeg",
-          0.68
+          0.56
         );
       }
 
