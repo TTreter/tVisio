@@ -1,8 +1,8 @@
-; Script Inno Setup 6 para o Instalador Oficial do tVisio v2.1.1 (Windows x64)
+; Script Inno Setup 6 para o Instalador Oficial do tVisio v2.1.2 (Windows x64)
 ; ==============================================================================
 
 #define MyAppName "tVisio"
-#define MyAppVersion "2.1.1"
+#define MyAppVersion "2.1.2"
 #define MyAppPublisher "Tiago Treter (@TTreter)"
 #define MyAppURL "https://github.com/TTreter/tVisio"
 #define MyAppExeName "tVisio.exe"
@@ -29,7 +29,7 @@ AllowNoIcons=yes
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
-CloseApplications=yes
+CloseApplications=force
 RestartApplications=no
 
 ; Estilo e Compressão Ultra
@@ -42,7 +42,7 @@ DisableWelcomePage=no
 
 ; Saída do Instalador
 OutputDir=_local\dist
-OutputBaseFilename=tVisio-Setup-v2.1.1-x64
+OutputBaseFilename=tVisio-Setup-v2.1.2-x64
 
 [Languages]
 Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
@@ -53,7 +53,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Name: "startup"; Description: "Iniciar automaticamente com o Windows"; GroupDescription: "Inicialização:"; Flags: unchecked
 
 [Files]
-Source: "target\release\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
+Source: "target\release\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion restartreplace
 Source: "assets\icon.ico"; DestDir: "{app}"; Flags: ignoreversion
 Source: "assets\driver\UnityCaptureFilter64.dll"; DestDir: "{app}\_local\driver"; Flags: ignoreversion restartreplace
 Source: "assets\driver\UnityCaptureFilter32.dll"; DestDir: "{app}\_local\driver"; Flags: ignoreversion restartreplace
