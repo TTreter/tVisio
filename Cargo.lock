@@ -3042,6 +3042,7 @@ dependencies = [
  "winreg",
  "winres",
  "wry",
+ "zune-jpeg",
 ]
 
 [[package]]

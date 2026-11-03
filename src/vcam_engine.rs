@@ -180,25 +180,43 @@ impl VirtualCamEngine {
         }
     }
 
-    /// Decodifica um pacote JPEG binário e executa o pipeline de 1 passada (Kernel Fusion).
-    pub fn process_jpeg_packet(&mut self, jpeg_bytes: &[u8]) {
-        let t0 = Instant::now();
-
+    /// Decodifica pacote JPEG com zune-jpeg (AVX2 / SSE SIMD ultra-rápido) e executa o pipeline 1-pass.
+    pub fn decode_and_process_jpeg(&mut self, jpeg_bytes: &[u8], t0: Instant) -> bool {
         if self.frozen {
             let _ = self.shm.send_frame_rgba_bottom_up(
                 self.width,
                 self.height,
                 &self.vcam_rgba_bottom_up,
             );
-            self.last_decode_ms = 0.03;
-            return;
+            self.last_decode_ms = 0.02;
+            return true;
         }
 
-        if let Ok(decoded) = image::load_from_memory_with_format(jpeg_bytes, image::ImageFormat::Jpeg) {
-            let rgb = decoded.to_rgb8();
-            let (w_in, h_in) = rgb.dimensions();
-            self.process_rgb_frame(rgb.as_raw(), w_in, h_in, t0);
+        let mut decoder = zune_jpeg::JpegDecoder::new(std::io::Cursor::new(jpeg_bytes));
+        match decoder.decode() {
+            Ok(pixels) => {
+                if let Some((w, h)) = decoder.dimensions() {
+                    self.process_rgb_frame(&pixels, w as u32, h as u32, t0);
+                    return true;
+                }
+            }
+            Err(_) => {
+                // Fallback para image-rs se formato JPEG tiver cabeçalho não-padrão
+                if let Ok(decoded) = image::load_from_memory_with_format(jpeg_bytes, image::ImageFormat::Jpeg) {
+                    let rgb = decoded.to_rgb8();
+                    let (w, h) = rgb.dimensions();
+                    self.process_rgb_frame(rgb.as_raw(), w, h, t0);
+                    return true;
+                }
+            }
         }
+        false
+    }
+
+    /// Decodifica um pacote JPEG binário e executa o pipeline de 1 passada (Kernel Fusion).
+    #[allow(dead_code)]
+    pub fn process_jpeg_packet(&mut self, jpeg_bytes: &[u8]) {
+        self.decode_and_process_jpeg(jpeg_bytes, Instant::now());
     }
 
     /// Pipeline 1-Pass Kernel Fusion sobre um buffer RGB24 (`src_rgb`):
@@ -414,5 +432,35 @@ impl VirtualCamEngine {
             image::ExtendedColorType::Rgb8,
         );
         jpeg_buf
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::settings::Settings;
+
+    #[test]
+    fn test_zune_jpeg_decoding_and_pipeline() {
+        let settings = Settings::default();
+        let mut engine = VirtualCamEngine::new(&settings);
+
+        // Gera uma imagem 64x64 vermelha codificada em JPEG
+        let width = 64u32;
+        let height = 64u32;
+        let rgb_data = vec![255u8, 0, 0].repeat((width * height) as usize);
+
+        let mut jpeg_bytes = Vec::new();
+        let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg_bytes, 75);
+        encoder
+            .encode(&rgb_data, width, height, image::ExtendedColorType::Rgb8)
+            .expect("Falha ao codificar JPEG de teste");
+
+        // Decodifica com zune-jpeg e processa
+        let success = engine.decode_and_process_jpeg(&jpeg_bytes, Instant::now());
+        assert!(success, "zune-jpeg falhou ao decodificar pacote JPEG válido");
+        assert_eq!(engine.input_width, 64);
+        assert_eq!(engine.input_height, 64);
+        assert_eq!(engine.frames_received, 1);
     }
 }

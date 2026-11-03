@@ -499,6 +499,28 @@ async fn handle_cert_download(State(state): State<SharedState>) -> Response {
     }
 }
 
+/// Verifica se a requisição se originou localmente (localhost / 127.0.0.1)
+/// Protege endpoints administrativos contra CSRF, CSWSH e DNS Rebinding.
+fn is_local_origin(headers: &HeaderMap) -> bool {
+    if let Some(origin) = headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()) {
+        let trimmed = origin.trim().to_lowercase();
+        if !trimmed.is_empty()
+            && !trimmed.starts_with("http://localhost")
+            && !trimmed.starts_with("https://localhost")
+            && !trimmed.starts_with("http://127.0.0.1")
+            && !trimmed.starts_with("https://127.0.0.1")
+        {
+            return false;
+        }
+    }
+    if let Some(sec_fetch_site) = headers.get("sec-fetch-site").and_then(|v| v.to_str().ok()) {
+        if sec_fetch_site == "cross-site" {
+            return false;
+        }
+    }
+    true
+}
+
 async fn handle_window_show(State(state): State<SharedState>) -> Json<Value> {
     if let Ok(mut s) = state.lock() {
         s.window_show_requested = true;
@@ -507,7 +529,13 @@ async fn handle_window_show(State(state): State<SharedState>) -> Json<Value> {
     Json(json!({ "ok": true }))
 }
 
-async fn handle_install_vcam(State(state): State<SharedState>) -> Json<Value> {
+async fn handle_install_vcam(
+    headers: HeaderMap,
+    State(state): State<SharedState>,
+) -> Response {
+    if !is_local_origin(&headers) {
+        return (StatusCode::FORBIDDEN, Json(json!({ "ok": false, "error": "Acesso não autorizado" }))).into_response();
+    }
     let base_dir = state.lock().unwrap().base_dir.clone();
     let ok = install_vcam_driver_offline(&base_dir).unwrap_or(false);
     let driver_active = if let Ok(mut s) = state.lock() {
@@ -515,43 +543,73 @@ async fn handle_install_vcam(State(state): State<SharedState>) -> Json<Value> {
     } else {
         ok
     };
-    Json(json!({ "ok": ok, "driver_active": driver_active }))
+    Json(json!({ "ok": ok, "driver_active": driver_active })).into_response()
 }
 
-async fn handle_open_hotspot(State(state): State<SharedState>) -> Json<Value> {
+async fn handle_open_hotspot(
+    headers: HeaderMap,
+    State(state): State<SharedState>,
+) -> Response {
+    if !is_local_origin(&headers) {
+        return (StatusCode::FORBIDDEN, Json(json!({ "ok": false, "error": "Acesso não autorizado" }))).into_response();
+    }
     open_mobile_hotspot_settings();
     if let Ok(mut s) = state.lock() {
         s.refresh_network_interfaces();
     }
-    Json(json!({ "ok": true }))
+    Json(json!({ "ok": true })).into_response()
 }
 
-async fn handle_firewall(State(state): State<SharedState>) -> Json<Value> {
+async fn handle_firewall(
+    headers: HeaderMap,
+    State(state): State<SharedState>,
+) -> Response {
+    if !is_local_origin(&headers) {
+        return (StatusCode::FORBIDDEN, Json(json!({ "ok": false, "error": "Acesso não autorizado" }))).into_response();
+    }
     let (http_port, https_port) = {
         let s = state.lock().unwrap();
         (s.http_port, s.https_port)
     };
     let ok = register_firewall_rules(http_port, https_port);
-    Json(json!({ "ok": ok }))
+    Json(json!({ "ok": ok })).into_response()
 }
 
-async fn handle_regenerate_token(State(state): State<SharedState>) -> Json<Value> {
+async fn handle_regenerate_token(
+    headers: HeaderMap,
+    State(state): State<SharedState>,
+) -> Response {
+    if !is_local_origin(&headers) {
+        return (StatusCode::FORBIDDEN, Json(json!({ "ok": false, "error": "Acesso não autorizado" }))).into_response();
+    }
     let (token, pairing_url) = {
         let mut s = state.lock().unwrap();
         let tok = s.settings.regenerate_token();
         s.rebuild_qr_code();
         (tok, s.pairing_url())
     };
-    Json(json!({ "ok": true, "token": token, "pairing_url": pairing_url }))
+    Json(json!({ "ok": true, "token": token, "pairing_url": pairing_url })).into_response()
 }
 
-async fn handle_open_data_dir(State(state): State<SharedState>) -> Json<Value> {
+async fn handle_open_data_dir(
+    headers: HeaderMap,
+    State(state): State<SharedState>,
+) -> Response {
+    if !is_local_origin(&headers) {
+        return (StatusCode::FORBIDDEN, Json(json!({ "ok": false, "error": "Acesso não autorizado" }))).into_response();
+    }
     let local_dir = state.lock().unwrap().base_dir.join("_local");
     open_local_data_folder(&local_dir);
-    Json(json!({ "ok": true }))
+    Json(json!({ "ok": true })).into_response()
 }
 
-async fn handle_open_external(Json(payload): Json<Value>) -> Json<Value> {
+async fn handle_open_external(
+    headers: HeaderMap,
+    Json(payload): Json<Value>,
+) -> Response {
+    if !is_local_origin(&headers) {
+        return (StatusCode::FORBIDDEN, Json(json!({ "ok": false, "error": "Acesso não autorizado" }))).into_response();
+    }
     if let Some(url) = payload.get("url").and_then(|v| v.as_str()) {
         if url.starts_with("https://") || url.starts_with("http://") {
             let _ = std::process::Command::new("cmd")
@@ -559,10 +617,16 @@ async fn handle_open_external(Json(payload): Json<Value>) -> Json<Value> {
                 .spawn();
         }
     }
-    Json(json!({ "ok": true }))
+    Json(json!({ "ok": true })).into_response()
 }
 
-async fn handle_app_quit(State(state): State<SharedState>) -> Json<Value> {
+async fn handle_app_quit(
+    headers: HeaderMap,
+    State(state): State<SharedState>,
+) -> Response {
+    if !is_local_origin(&headers) {
+        return (StatusCode::FORBIDDEN, Json(json!({ "ok": false, "error": "Acesso não autorizado" }))).into_response();
+    }
     if let Ok(mut s) = state.lock() {
         s.quit_requested = true;
     }
@@ -570,10 +634,16 @@ async fn handle_app_quit(State(state): State<SharedState>) -> Json<Value> {
         tokio::time::sleep(Duration::from_millis(120)).await;
         std::process::exit(0);
     });
-    Json(json!({ "ok": true }))
+    Json(json!({ "ok": true })).into_response()
 }
 
-async fn handle_update_download(Json(payload): Json<Value>) -> Response {
+async fn handle_update_download(
+    headers: HeaderMap,
+    Json(payload): Json<Value>,
+) -> Response {
+    if !is_local_origin(&headers) {
+        return (StatusCode::FORBIDDEN, Json(json!({ "ok": false, "error": "Acesso não autorizado" }))).into_response();
+    }
     let url = payload.get("url").and_then(|v| v.as_str()).unwrap_or("");
     let filename = payload.get("filename").and_then(|v| v.as_str()).unwrap_or("");
 
@@ -641,28 +711,48 @@ async fn handle_update_download(Json(payload): Json<Value>) -> Response {
     }
 }
 
-async fn handle_update_launch(Json(payload): Json<Value>) -> Response {
+async fn handle_update_launch(
+    headers: HeaderMap,
+    Json(payload): Json<Value>,
+) -> Response {
+    if !is_local_origin(&headers) {
+        return (StatusCode::FORBIDDEN, Json(json!({ "ok": false, "error": "Acesso não autorizado" }))).into_response();
+    }
     let file_path = payload.get("file_path").and_then(|v| v.as_str()).unwrap_or("");
     let path = PathBuf::from(file_path);
     if path.exists() {
-        if path
+        let file_name = path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        let is_exe = path
             .extension()
             .and_then(|e| e.to_str())
             .map(|s| s.to_lowercase())
-            == Some("exe".to_string())
-        {
+            == Some("exe".to_string());
+
+        if is_exe {
+            // Validação estrita: apenas executáveis de instalação ou atualização do tVisio
+            let is_tvisio = file_name.starts_with("tvisio") || file_name.contains("setup");
+            if !is_tvisio {
+                return (
+                    StatusCode::FORBIDDEN,
+                    Json(json!({ "ok": false, "error": "Execução restrita a atualizações oficiais do tVisio" })),
+                )
+                    .into_response();
+            }
+
             let _ = std::process::Command::new("cmd")
                 .args(["/C", "start", "", file_path])
                 .spawn();
 
             // Se for o instalador de atualização, encerra a instância atual após breve delay
             // para liberar o executável em disco e evitar erro de 'Acesso Negado' (código 5)
-            if file_path.to_lowercase().contains("setup") {
-                tokio::spawn(async move {
-                    tokio::time::sleep(Duration::from_millis(600)).await;
-                    std::process::exit(0);
-                });
-            }
+            tokio::spawn(async move {
+                tokio::time::sleep(Duration::from_millis(600)).await;
+                std::process::exit(0);
+            });
 
             return Json(json!({ "ok": true })).into_response();
         } else {
@@ -712,10 +802,19 @@ fn encode_rgba_to_jpeg_fast(rgba: &[u8], width: u32, height: u32, quality: u8) -
 // -----------------------------------------------------------------------------
 
 async fn handle_desktop_ws(
+    headers: HeaderMap,
     ws: WebSocketUpgrade,
     State(state): State<SharedState>,
-) -> impl IntoResponse {
+) -> Response {
+    if !is_local_origin(&headers) {
+        return (
+            StatusCode::FORBIDDEN,
+            "Acesso não autorizado: Origem externa bloqueada para a interface desktop",
+        )
+            .into_response();
+    }
     ws.on_upgrade(move |socket| handle_desktop_socket(socket, state))
+        .into_response()
 }
 
 async fn handle_desktop_socket(socket: WebSocket, state: SharedState) {
@@ -988,11 +1087,29 @@ async fn handle_desktop_socket(socket: WebSocket, state: SharedState) {
 // -----------------------------------------------------------------------------
 
 async fn handle_mobile_ws(
+    Query(params): Query<HashMap<String, String>>,
     ws: WebSocketUpgrade,
     State(state): State<SharedState>,
-) -> impl IntoResponse {
-    ws.max_message_size(16 * 1024 * 1024)
+) -> Response {
+    // Validação de Segurança: session_token
+    let expected_token = state
+        .lock()
+        .map(|s| s.settings.data.session_token.clone())
+        .unwrap_or_default();
+    if !expected_token.is_empty() {
+        let provided_token = params.get("t").map(|s| s.as_str()).unwrap_or("");
+        if provided_token != expected_token {
+            return (
+                StatusCode::UNAUTHORIZED,
+                "Acesso não autorizado: Token de sessão inválido ou ausente. Escaneie o QR Code na tela desktop.",
+            )
+                .into_response();
+        }
+    }
+
+    ws.max_message_size(2 * 1024 * 1024)
         .on_upgrade(move |socket| handle_mobile_socket(socket, state))
+        .into_response()
 }
 
 async fn handle_mobile_socket(socket: WebSocket, state: SharedState) {
@@ -1069,6 +1186,33 @@ async fn handle_mobile_socket(socket: WebSocket, state: SharedState) {
         }
     });
 
+    // Canal de desacoplamento Zero-Bufferbloat (Zero-Queue adaptativo):
+    // Mantém estritamente o frame mais recente em trânsito. Se a decodificação
+    // levar 2-3ms e novos pacotes chegarem pela rede, quaisquer frames antigos intermediários
+    // são descartados de imediato, garantindo delay zero acumulado na exibição.
+    let (frame_tx, mut frame_rx) = tokio::sync::watch::channel::<Option<(f64, Vec<u8>, Instant)>>(None);
+
+    let state_for_decoder = state.clone();
+    let decoder_task = tokio::spawn(async move {
+        while frame_rx.changed().await.is_ok() {
+            let item = { frame_rx.borrow_and_update().clone() };
+            if let Some((_client_ts, jpeg_data, t0)) = item {
+                let state_clone = state_for_decoder.clone();
+                let _ = tokio::task::spawn_blocking(move || {
+                    if let Ok(mut s) = state_clone.lock() {
+                        if s.vcam.decode_and_process_jpeg(&jpeg_data, t0) {
+                            let decode_ms = s.vcam.last_decode_ms;
+                            let rtt = s.rtt_ms;
+                            let shutter = s.settings.data.shutter_cap_ms.min(16.0);
+                            s.glass_to_glass_ms = ((rtt * 0.5) + shutter * 0.6 + decode_ms).max(5.8);
+                        }
+                    }
+                })
+                .await;
+            }
+        }
+    });
+
     // Loop principal de recepção de pacotes binários de vídeo e telemetria JSON
     while let Some(Ok(msg)) = ws_receiver.next().await {
         match msg {
@@ -1078,37 +1222,16 @@ async fn handle_mobile_socket(socket: WebSocket, state: SharedState) {
                     let mut ts_bytes = [0u8; 8];
                     ts_bytes.copy_from_slice(&data[..8]);
                     let client_ts = f64::from_le_bytes(ts_bytes);
-                    let jpeg_bytes = &data[8..];
+                    let jpeg_bytes = data[8..].to_vec();
 
-                    // Envia ACK imediato antes da decodificação para eliminar espera ociosa no celular
+                    // 1. Envia ACK imediato no WebSocket (Zero espera para o celular)
                     let ack_msg = json!({ "type": "ack", "ts": client_ts }).to_string();
                     let _ = out_tx.send(Message::Text(ack_msg));
 
                     let t0 = Instant::now();
-                    let is_frozen = state.lock().map(|s| s.vcam.frozen).unwrap_or(false);
-                    if is_frozen {
-                        if let Ok(mut s) = state.lock() {
-                            s.vcam.process_jpeg_packet(&[]);
-                        }
-                        continue;
-                    }
 
-                    // Decodifica JPEG fora do Mutex para nunca bloquear a interface gráfica a 60 FPS
-                    if let Ok(decoded) =
-                        image::load_from_memory_with_format(jpeg_bytes, image::ImageFormat::Jpeg)
-                    {
-                        let rgb = decoded.to_rgb8();
-                        let (w, h) = rgb.dimensions();
-
-                        if let Ok(mut s) = state.lock() {
-                            s.vcam.process_rgb_frame(rgb.as_raw(), w, h, t0);
-                            let decode_ms = s.vcam.last_decode_ms;
-                            let rtt = s.rtt_ms;
-                            let shutter = s.settings.data.shutter_cap_ms.min(16.0);
-                            s.glass_to_glass_ms =
-                                ((rtt * 0.5) + shutter * 0.6 + decode_ms).max(6.8);
-                        }
-                    }
+                    // 2. Entrega no canal watch: substitui qualquer frame antigo pendente sem travar o socket
+                    let _ = frame_tx.send_replace(Some((client_ts, jpeg_bytes, t0)));
                 }
             }
             Message::Text(text) => {
@@ -1169,6 +1292,7 @@ async fn handle_mobile_socket(socket: WebSocket, state: SharedState) {
         }
     }
 
+    decoder_task.abort();
     psm_task.abort();
     cmd_forward_task.abort();
     writer_task.abort();

@@ -33,6 +33,7 @@ serde_json = "1.0"
 
 # Processamento de Imagem, Decodificação JPEG e Geração de QR Code
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "ico"] }
+zune-jpeg = "0.5"
 qrcode = { version = "0.14", default-features = false }
 
 # Descoberta de Interfaces de Rede Local (USB / Hotspot / LAN)
