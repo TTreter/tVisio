@@ -55,8 +55,8 @@ Name: "startup"; Description: "Iniciar automaticamente com o Windows"; GroupDesc
 [Files]
 Source: "target\release\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "assets\icon.ico"; DestDir: "{app}"; Flags: ignoreversion
-Source: "assets\driver\UnityCaptureFilter64.dll"; DestDir: "{app}\_local\driver"; Flags: ignoreversion
-Source: "assets\driver\UnityCaptureFilter32.dll"; DestDir: "{app}\_local\driver"; Flags: ignoreversion
+Source: "assets\driver\UnityCaptureFilter64.dll"; DestDir: "{app}\_local\driver"; Flags: ignoreversion restartreplace
+Source: "assets\driver\UnityCaptureFilter32.dll"; DestDir: "{app}\_local\driver"; Flags: ignoreversion restartreplace
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\icon.ico"
