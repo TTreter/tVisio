@@ -456,16 +456,29 @@
         applyOpticalSensorTuning();
         sendTelemetry();
         break;
-      case "set_resolution":
+      case "set_resolution": {
+        let w = 1280;
+        let h = 720;
+        let fps = 30;
         if (msg.profile) {
-          const [dims, fps] = msg.profile.split("@");
-          const [w, h] = dims.split("x").map(Number);
-          targetWidth = w || 1280;
-          targetHeight = h || 720;
-          targetFps = Number(fps) || 30;
+          const parts = msg.profile.split("@");
+          const dims = (parts[0] || "1280x720").split("x");
+          w = Number(dims[0]) || 1280;
+          h = Number(dims[1]) || 720;
+          fps = Number(parts[1]) || 30;
+        } else if (msg.width && msg.height) {
+          w = Number(msg.width) || 1280;
+          h = Number(msg.height) || 720;
+          fps = Number(msg.fps) || 30;
+        }
+        if (targetWidth !== w || targetHeight !== h || targetFps !== fps) {
+          targetWidth = w;
+          targetHeight = h;
+          targetFps = fps;
           startCamera();
         }
         break;
+      }
     }
   }
 
@@ -539,8 +552,8 @@
         lastFrameTime = now;
         isConverting = true;
 
-        const vw = videoEl.videoWidth || 1280;
-        const vh = videoEl.videoHeight || 720;
+        const vw = videoEl.videoWidth || targetWidth || 1280;
+        const vh = videoEl.videoHeight || targetHeight || 720;
         if (captureCanvas.width !== vw || captureCanvas.height !== vh) {
           captureCanvas.width = vw;
           captureCanvas.height = vh;

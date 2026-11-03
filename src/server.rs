@@ -1032,8 +1032,13 @@ async fn handle_desktop_socket(socket: WebSocket, state: SharedState) {
                                 let w: u32 = res_parts.first().and_then(|x| x.parse().ok()).unwrap_or(1280);
                                 let h: u32 = res_parts.get(1).and_then(|x| x.parse().ok()).unwrap_or(720);
                                 let fps: u32 = parts.get(1).and_then(|x| x.parse().ok()).unwrap_or(30);
+
+                                // Atualiza a resolução interna do motor VirtualCam
+                                s.vcam.set_resolution(w, h);
+
                                 s.send_mobile_command(json!({
                                     "command": "set_resolution",
+                                    "profile": prof,
                                     "width": w,
                                     "height": h,
                                     "fps": fps
@@ -1146,6 +1151,27 @@ async fn handle_mobile_socket(socket: WebSocket, state: SharedState) {
         });
         let _ = out_tx.send(Message::Text(init_cam_cmd.to_string()));
     }
+
+    // Sincroniza o modo de resolução configurado no desktop com o smartphone
+    let (initial_res_profile, res_w, res_h, res_fps) = {
+        let s = state.lock().unwrap();
+        let prof = s.settings.data.resolution_profile.clone();
+        let parts: Vec<&str> = prof.split('@').collect();
+        let res_parts: Vec<&str> = parts.first().unwrap_or(&"1280x720").split('x').collect();
+        let w: u32 = res_parts.first().and_then(|x| x.parse().ok()).unwrap_or(1280);
+        let h: u32 = res_parts.get(1).and_then(|x| x.parse().ok()).unwrap_or(720);
+        let fps: u32 = parts.get(1).and_then(|x| x.parse().ok()).unwrap_or(30);
+        (prof, w, h, fps)
+    };
+    let init_res_cmd = json!({
+        "type": "command",
+        "command": "set_resolution",
+        "profile": initial_res_profile,
+        "width": res_w,
+        "height": res_h,
+        "fps": res_fps,
+    });
+    let _ = out_tx.send(Message::Text(init_res_cmd.to_string()));
 
     // Task dedicada de escrita no WebSocket (Comandos + ACKs + Pulso Anti-PSM 500Hz)
     let state_for_writer = state.clone();

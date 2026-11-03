@@ -65,6 +65,14 @@ pub struct VirtualCamEngine {
     pub last_decode_ms: f32,
 }
 
+pub fn parse_resolution_profile(profile: &str) -> (u32, u32) {
+    let parts: Vec<&str> = profile.split('@').collect();
+    let res_parts: Vec<&str> = parts.first().unwrap_or(&"1280x720").split('x').collect();
+    let w: u32 = res_parts.first().and_then(|x| x.parse().ok()).unwrap_or(VCAM_WIDTH);
+    let h: u32 = res_parts.get(1).and_then(|x| x.parse().ok()).unwrap_or(VCAM_HEIGHT);
+    (w, h)
+}
+
 impl VirtualCamEngine {
     pub fn new(initial: &Settings) -> Self {
         let cam_name = if initial.camera_display_name.trim().is_empty() {
@@ -72,10 +80,11 @@ impl VirtualCamEngine {
         } else {
             &initial.camera_display_name
         };
+        let (init_w, init_h) = parse_resolution_profile(&initial.resolution_profile);
         let mut engine = Self {
             shm: UnityCaptureSharedMem::with_name(cam_name),
-            width: VCAM_WIDTH,
-            height: VCAM_HEIGHT,
+            width: init_w,
+            height: init_h,
             input_width: 0,
             input_height: 0,
             mirror_horizontal: initial.mirror_horizontal,
@@ -97,7 +106,7 @@ impl VirtualCamEngine {
             ambient_rgba: vec![0u8; (AMBIENT_WIDTH * AMBIENT_HEIGHT * 4) as usize],
             preview_seq: 0,
             last_preview_instant: Instant::now(),
-            vcam_rgba_bottom_up: vec![0u8; (VCAM_WIDTH * VCAM_HEIGHT * 4) as usize],
+            vcam_rgba_bottom_up: vec![0u8; (init_w * init_h * 4) as usize],
             last_fit_dims: (0, 0, -1),
             frames_received: 0,
             current_fps: 0.0,
@@ -108,6 +117,17 @@ impl VirtualCamEngine {
         engine.clear_vcam_canvas_black();
         engine.rebuild_color_lut();
         engine
+    }
+
+    /// Altera dinamicamente a resolução de saída da webcam virtual DirectShow.
+    pub fn set_resolution(&mut self, width: u32, height: u32) {
+        if width > 0 && height > 0 && (self.width != width || self.height != height) {
+            self.width = width;
+            self.height = height;
+            self.vcam_rgba_bottom_up = vec![0u8; (width * height * 4) as usize];
+            self.clear_vcam_canvas_black();
+            self.last_fit_dims = (0, 0, -1);
+        }
     }
 
     fn clear_vcam_canvas_black(&mut self) {
@@ -368,21 +388,21 @@ impl VirtualCamEngine {
     }
 
     /// Extrai a textura 640x360 (top-down) e a textura de brilho ambiente 64x36 diretamente
-    /// a partir do canvas processado de 1280x720 (custo < 0.05ms, zero compressão JPEG).
+    /// a partir do canvas processado (custo < 0.05ms, zero compressão JPEG).
     fn update_native_preview_buffers(&mut self) {
         let src_w = self.width as usize;
-        let _src_h = self.height as usize;
+        let src_h = self.height as usize;
         let pw = PREVIEW_WIDTH as usize;
         let ph = PREVIEW_HEIGHT as usize;
 
         for py in 0..ph {
-            // Buffer top-down correspondente à textura de exibição na GPU
-            let src_y = py * 2;
+            let src_y = (py * src_h) / ph;
             let src_row_offset = src_y * src_w * 4;
             let dst_row_offset = py * pw * 4;
 
             for px in 0..pw {
-                let s_idx = src_row_offset + (px * 2) * 4;
+                let src_x = (px * src_w) / pw;
+                let s_idx = src_row_offset + src_x * 4;
                 let d_idx = dst_row_offset + px * 4;
                 self.preview_rgba[d_idx..d_idx + 4]
                     .copy_from_slice(&self.vcam_rgba_bottom_up[s_idx..s_idx + 4]);
@@ -462,5 +482,30 @@ mod tests {
         assert_eq!(engine.input_width, 64);
         assert_eq!(engine.input_height, 64);
         assert_eq!(engine.frames_received, 1);
+    }
+
+    #[test]
+    fn test_dynamic_resolution_switch() {
+        assert_eq!(parse_resolution_profile("1920x1080@60"), (1920, 1080));
+        assert_eq!(parse_resolution_profile("1280x720@30"), (1280, 720));
+
+        let mut settings = Settings::default();
+        settings.resolution_profile = "1920x1080@30".to_string();
+        let mut engine = VirtualCamEngine::new(&settings);
+        assert_eq!(engine.width, 1920);
+        assert_eq!(engine.height, 1080);
+        assert_eq!(engine.vcam_rgba_bottom_up.len(), 1920 * 1080 * 4);
+
+        // Altera dinamicamente para 720p
+        engine.set_resolution(1280, 720);
+        assert_eq!(engine.width, 1280);
+        assert_eq!(engine.height, 720);
+        assert_eq!(engine.vcam_rgba_bottom_up.len(), 1280 * 720 * 4);
+
+        // Altera dinamicamente de volta para 1080p
+        engine.set_resolution(1920, 1080);
+        assert_eq!(engine.width, 1920);
+        assert_eq!(engine.height, 1080);
+        assert_eq!(engine.vcam_rgba_bottom_up.len(), 1920 * 1080 * 4);
     }
 }

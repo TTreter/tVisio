@@ -220,11 +220,11 @@
       if (data.app_settings) {
         if (data.app_settings.resolution_profile) {
           const resEl = document.getElementById("resolutionSelect");
-          if (resEl) resEl.value = data.app_settings.resolution_profile;
+          if (resEl && !resEl.matches(":focus")) resEl.value = data.app_settings.resolution_profile;
         }
         if (data.app_settings.camera_display_name) {
           const nameEl = document.getElementById("txtCameraDisplayName");
-          if (nameEl) nameEl.value = data.app_settings.camera_display_name;
+          if (nameEl && !nameEl.matches(":focus")) nameEl.value = data.app_settings.camera_display_name;
         }
       }
 
@@ -663,7 +663,7 @@
   });
 
   // --- Verificador de Atualizações do GitHub e Download Automático ---
-  const CURRENT_APP_VERSION = "v2.2.0";
+  const CURRENT_APP_VERSION = "v2.2.1";
   let latestGitHubRelease = null;
   let isAppInstalled = false;
   let isDownloadingUpdate = false;
