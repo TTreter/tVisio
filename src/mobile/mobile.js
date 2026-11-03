@@ -51,9 +51,11 @@
   let webrtcConnected = false;
   let turboRafId = null;
   let rttMs = 4.5;
-  let frameInFlight = false;
+  let isConverting = false;
+  const tsHeader = new ArrayBuffer(8);
+  const tsView = new DataView(tsHeader);
 
-  // Canvas auxiliar para modo de fallback binário (quando WebRTC estiver negociando)
+  // Canvas auxiliar para streaming binário de ultra-baixa latência
   const captureCanvas = document.createElement("canvas");
   const captureCtx = captureCanvas.getContext("2d", { alpha: false, desynchronized: true });
 
@@ -337,7 +339,6 @@
           pc = null;
           if (ecoMode) toggleEcoMode(false);
           startBinaryTurboLoop();
-          setTimeout(startWebRTC, 1200);
         }
       };
 
@@ -352,6 +353,16 @@
           type: pc.localDescription.type,
         }),
       });
+
+      if (res.status === 501) {
+        // Servidor Rust utiliza WebSocket Binary Turbo otimizado; desativa loop de SDP
+        if (pc) {
+          try { pc.close(); } catch (_) {}
+          pc = null;
+        }
+        startBinaryTurboLoop();
+        return;
+      }
 
       if (res.ok) {
         const answer = await res.json();
@@ -390,7 +401,6 @@
             rttMs = rttMs * 0.75 + sampleRtt * 0.25;
             capsuleRtt.textContent = `${(rttMs * 0.5 + shutterCapMs).toFixed(1)} ms`;
           }
-          frameInFlight = false;
         } else if (msg.type === "command") {
           handleRemoteCommand(msg);
         }
@@ -496,21 +506,36 @@
   }
 
   /**
-   * Loop de fallback em JPEG binário sobre WebSocket caso o WebRTC não consiga estabelecer rota P2P.
+   * Loop de streaming binário de ultra-baixa latência sobre WebSocket.
+   * Elimina buffers intermediários, utiliza packing zero-copy com Blob e controle anti-bloat via ws.bufferedAmount.
    */
   function startBinaryTurboLoop() {
     stopBinaryTurboLoop();
-    let lastFallbackTime = 0;
+    let lastFrameTime = 0;
     const tick = (now) => {
       if (webrtcConnected || !ws || ws.readyState !== WebSocket.OPEN) {
         turboRafId = null;
         return;
       }
 
-      // Respeita a taxa de quadros alvo (30 FPS ou 60 FPS) com controle de fluxo Zero-Queue (1 frame in-flight)
-      const minIntervalMs = Math.max(14, Math.floor(1000 / targetFps) - 3);
-      if (!frameInFlight && videoEl.readyState >= 2 && now - lastFallbackTime >= minIntervalMs) {
-        lastFallbackTime = now;
+      // Respeita a taxa de quadros alvo (30 FPS ou 60 FPS)
+      const targetInterval = 1000 / targetFps;
+      const elapsed = now - lastFrameTime;
+
+      // Controle de fluxo anti-bloat:
+      // 1. Aguarda intervalo da taxa de FPS alvo (-3ms de tolerância de jitter RAF)
+      // 2. Não sobrepõe conversões ativas de canvas
+      // 3. Drop de quadro adaptativo se o buffer de envio TCP/WebSocket estiver acumulando (>64KB)
+      if (elapsed >= targetInterval - 3 && !isConverting && videoEl.readyState >= 2) {
+        if (ws.bufferedAmount > 65536) {
+          // Congestionamento transitório na rede WiFi; descarta quadro na origem para latência Zero
+          turboRafId = requestAnimationFrame(tick);
+          return;
+        }
+
+        lastFrameTime = now;
+        isConverting = true;
+
         const vw = videoEl.videoWidth || 1280;
         const vh = videoEl.videoHeight || 720;
         if (captureCanvas.width !== vw || captureCanvas.height !== vh) {
@@ -519,23 +544,22 @@
         }
 
         captureCtx.drawImage(videoEl, 0, 0, vw, vh);
-        frameInFlight = true;
         const ts = performance.now();
 
         captureCanvas.toBlob(
-          async (blob) => {
-            if (!blob || !ws || ws.readyState !== WebSocket.OPEN) {
-              frameInFlight = false;
-              return;
+          (blob) => {
+            try {
+              if (blob && ws && ws.readyState === WebSocket.OPEN && ws.bufferedAmount <= 65536) {
+                tsView.setFloat64(0, ts, true);
+                ws.send(new Blob([tsHeader, blob]));
+              }
+            } catch (_) {
+            } finally {
+              isConverting = false;
             }
-            const imgBuf = await blob.arrayBuffer();
-            const packet = new Uint8Array(8 + imgBuf.byteLength);
-            new DataView(packet.buffer).setFloat64(0, ts, true);
-            packet.set(new Uint8Array(imgBuf), 8);
-            ws.send(packet.buffer);
           },
           "image/jpeg",
-          0.72
+          0.68
         );
       }
 

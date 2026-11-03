@@ -281,20 +281,26 @@ pub async fn run_background_servers(state: SharedState) {
     let app_http = build_router(state.clone());
     let app_https = build_router(state.clone());
 
-    // Servidor HTTP (Porta 8080 — Janela Nativa Desktop e USB ADB Localhost)
+    use axum_server::accept::NoDelayAcceptor;
+    use axum_server::tls_rustls::RustlsAcceptor;
+
+    // Servidor HTTP (Porta 8080 — Janela Nativa Desktop e USB ADB Localhost) com TCP_NODELAY ativo
     let http_addr = SocketAddr::from(([0, 0, 0, 0], http_port));
     tokio::spawn(async move {
         let _ = axum_server::bind(http_addr)
+            .acceptor(NoDelayAcceptor::new())
             .serve(app_http.into_make_service())
             .await;
     });
 
-    // Servidor HTTPS (Porta 8443 — Necessário para getUserMedia() em navegadores móveis)
+    // Servidor HTTPS (Porta 8443 — Necessário para getUserMedia() em navegadores móveis) com TCP_NODELAY ativo
     if let Ok((cert_path, key_path)) = cert_res {
         if let Ok(tls_config) = RustlsConfig::from_pem_file(cert_path, key_path).await {
             let https_addr = SocketAddr::from(([0, 0, 0, 0], https_port));
             tokio::spawn(async move {
-                let _ = axum_server::bind_rustls(https_addr, tls_config)
+                let acceptor = RustlsAcceptor::new(tls_config).acceptor(NoDelayAcceptor::new());
+                let _ = axum_server::bind(https_addr)
+                    .acceptor(acceptor)
                     .serve(app_https.into_make_service())
                     .await;
             });
@@ -564,6 +570,25 @@ async fn handle_webrtc_offer() -> Response {
         .into_response()
 }
 
+fn encode_rgba_to_jpeg_fast(rgba: &[u8], width: u32, height: u32, quality: u8) -> Vec<u8> {
+    let mut rgb = Vec::with_capacity((width * height * 3) as usize);
+    for chunk in rgba.chunks_exact(4) {
+        rgb.push(chunk[0]);
+        rgb.push(chunk[1]);
+        rgb.push(chunk[2]);
+    }
+    let mut jpeg_buf = Vec::with_capacity(24 * 1024);
+    let mut encoder = image::codecs::jpeg::JpegEncoder::new_with_quality(&mut jpeg_buf, quality);
+    if encoder
+        .encode(&rgb, width, height, image::ExtendedColorType::Rgb8)
+        .is_ok()
+    {
+        jpeg_buf
+    } else {
+        Vec::new()
+    }
+}
+
 // -----------------------------------------------------------------------------
 // WebSocket da Interface Desktop (/ws/desktop)
 // -----------------------------------------------------------------------------
@@ -602,30 +627,32 @@ async fn handle_desktop_socket(socket: WebSocket, state: SharedState) {
         }
     });
 
-    // Task de envio de frames JPEG 360p para o Miniplayer (somente quando há novo frame e preview ativo)
+    // Task de envio de frames JPEG 360p para o Miniplayer (renderizado fora do lock principal)
     let state_preview = state.clone();
     let out_tx_preview = out_tx.clone();
     let preview_task = tokio::spawn(async move {
         let mut last_seq = 0u64;
         loop {
-            tokio::time::sleep(Duration::from_millis(32)).await;
-            let jpeg_opt = {
+            tokio::time::sleep(Duration::from_millis(33)).await;
+            let (preview_rgba_opt, seq) = {
                 if let Ok(s) = state_preview.lock() {
                     if s.mobile_connected
                         && s.vcam.miniplayer_enabled
                         && s.vcam.preview_seq != last_seq
                         && s.vcam.preview_seq > 0
                     {
-                        last_seq = s.vcam.preview_seq;
-                        Some(s.vcam.encode_preview_jpeg())
+                        (Some(s.vcam.preview_rgba.clone()), s.vcam.preview_seq)
                     } else {
-                        None
+                        (None, last_seq)
                     }
                 } else {
-                    None
+                    (None, last_seq)
                 }
             };
-            if let Some(jpeg_bytes) = jpeg_opt {
+            if let Some(rgba) = preview_rgba_opt {
+                last_seq = seq;
+                // Executa encode JPEG leve de 360p fora do lock de processamento
+                let jpeg_bytes = encode_rgba_to_jpeg_fast(&rgba, 640, 360, 70);
                 if !jpeg_bytes.is_empty() {
                     if out_tx_preview.send(Message::Binary(jpeg_bytes)).is_err() {
                         break;

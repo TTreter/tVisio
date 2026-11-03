@@ -397,6 +397,7 @@ impl VirtualCamEngine {
     }
 
     /// Codifica o buffer de preview 640x360 em JPEG rápido (qualidade 78) para o WebSocket `/ws/desktop`.
+    #[allow(dead_code)]
     pub fn encode_preview_jpeg(&self) -> Vec<u8> {
         let mut rgb = Vec::with_capacity((PREVIEW_WIDTH * PREVIEW_HEIGHT * 3) as usize);
         for chunk in self.preview_rgba.chunks_exact(4) {
