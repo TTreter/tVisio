@@ -663,7 +663,7 @@
   });
 
   // --- Verificador de Atualizações do GitHub e Download Automático ---
-  const CURRENT_APP_VERSION = "v2.2.1";
+  const CURRENT_APP_VERSION = "v2.2.2";
   let latestGitHubRelease = null;
   let isAppInstalled = false;
   let isDownloadingUpdate = false;
@@ -757,19 +757,20 @@
         }
 
         if (data.is_installer) {
-          if (btnDownloadUpdateText) btnDownloadUpdateText.textContent = "Instalar Agora (Clique para Executar)";
+          if (btnDownloadUpdateText) btnDownloadUpdateText.textContent = "Instalar Atualização (1 Clique)";
         } else {
           if (btnDownloadUpdateText) btnDownloadUpdateText.textContent = "Abrir Atualização Baixada";
         }
 
         if (linkOpenDownloadsDir) {
+          linkOpenDownloadsDir.textContent = "Abrir pasta do instalador";
           linkOpenDownloadsDir.style.display = "inline";
           linkOpenDownloadsDir.onclick = (e) => {
             e.preventDefault();
             fetch("/api/app/update/launch", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ file_path: downloadedUpdateFilePath }),
+              body: JSON.stringify({ file_path: downloadedUpdateFilePath, open_folder: true }),
             });
           };
         }
@@ -904,10 +905,12 @@
       // Se já foi baixado, executa o instalador ou abre no Explorer
       if (downloadedUpdateFilePath) {
         try {
+          const btnDownloadUpdateText = document.getElementById("btnDownloadUpdateText");
+          if (btnDownloadUpdateText) btnDownloadUpdateText.textContent = "Iniciando instalador...";
           await fetch("/api/app/update/launch", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ file_path: downloadedUpdateFilePath }),
+            body: JSON.stringify({ file_path: downloadedUpdateFilePath, open_folder: false }),
           });
         } catch (_) {}
         return;

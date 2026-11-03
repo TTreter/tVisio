@@ -1,8 +1,8 @@
-; Script Inno Setup 6 para o Instalador Oficial do tVisio v2.2.1 (Windows x64)
+; Script Inno Setup 6 para o Instalador Oficial do tVisio v2.2.2 (Windows x64)
 ; ==============================================================================
 
 #define MyAppName "tVisio"
-#define MyAppVersion "2.2.1"
+#define MyAppVersion "2.2.2"
 #define MyAppPublisher "Tiago Treter (@TTreter)"
 #define MyAppURL "https://github.com/TTreter/tVisio"
 #define MyAppExeName "tVisio.exe"
@@ -29,8 +29,9 @@ AllowNoIcons=yes
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 PrivilegesRequired=admin
-CloseApplications=force
+CloseApplications=no
 RestartApplications=no
+RestartIfNeededByRun=no
 
 ; Estilo e Compressão Ultra
 SetupIconFile=assets\icon.ico
@@ -42,7 +43,7 @@ DisableWelcomePage=no
 
 ; Saída do Instalador
 OutputDir=_local\dist
-OutputBaseFilename=tVisio-Setup-v2.2.1-x64
+OutputBaseFilename=tVisio-Setup-v2.2.2-x64
 
 [Languages]
 Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
@@ -53,10 +54,10 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 Name: "startup"; Description: "Iniciar automaticamente com o Windows"; GroupDescription: "Inicialização:"; Flags: unchecked
 
 [Files]
-Source: "target\release\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion restartreplace
+Source: "target\release\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "assets\icon.ico"; DestDir: "{app}"; Flags: ignoreversion
-Source: "assets\driver\UnityCaptureFilter64.dll"; DestDir: "{app}\_local\driver"; Flags: ignoreversion restartreplace
-Source: "assets\driver\UnityCaptureFilter32.dll"; DestDir: "{app}\_local\driver"; Flags: ignoreversion restartreplace
+Source: "assets\driver\UnityCaptureFilter64.dll"; DestDir: "{app}\_local\driver"; Flags: onlyifdoesntexist uninsneveruninstall
+Source: "assets\driver\UnityCaptureFilter32.dll"; DestDir: "{app}\_local\driver"; Flags: onlyifdoesntexist uninsneveruninstall
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\icon.ico"
@@ -77,6 +78,27 @@ Filename: "{syswow64}\regsvr32.exe"; Parameters: "/u /s ""{app}\_local\driver\Un
 Type: filesandordirs; Name: "{app}\_local"
 
 [Code]
+function IsAppAlreadyInstalled(): Boolean;
+begin
+  Result := RegKeyExists(HKEY_LOCAL_MACHINE, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{5C2CD55C-92AD-4999-8666-912BD3E70000}_is1')
+         or RegKeyExists(HKEY_CURRENT_USER, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{5C2CD55C-92AD-4999-8666-912BD3E70000}_is1')
+         or FileExists(ExpandConstant('{app}\tVisio.exe'));
+end;
+
+function ShouldSkipPage(PageID: Integer): Boolean;
+begin
+  // Em modo de atualização, pula telas redundantes (Diretório, Menu Iniciar, Atalhos e Resumo)
+  if IsAppAlreadyInstalled() then
+  begin
+    if (PageID = wpSelectDir) or (PageID = wpSelectProgramGroup) or (PageID = wpSelectTasks) or (PageID = wpReady) then
+      Result := True
+    else
+      Result := False;
+  end
+  else
+    Result := False;
+end;
+
 function InitializeSetup(): Boolean;
 var
   ErrorCode: Integer;

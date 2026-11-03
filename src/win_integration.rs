@@ -193,8 +193,19 @@ pub fn register_firewall_rules(http_port: u16, https_port: u16) -> bool {
     }
 }
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+#[allow(dead_code)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
 /// Abre a tela de configurações nativas do Mobile Hotspot 5GHz do Windows 10/11.
 pub fn open_mobile_hotspot_settings() {
+    #[cfg(target_os = "windows")]
+    let _ = Command::new("cmd")
+        .args(["/C", "start", "ms-settings:network-mobilehotspot"])
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn();
+    #[cfg(not(target_os = "windows"))]
     let _ = Command::new("cmd")
         .args(["/C", "start", "ms-settings:network-mobilehotspot"])
         .spawn();
@@ -203,6 +214,12 @@ pub fn open_mobile_hotspot_settings() {
 /// Abre a pasta de dados locais (`_local`) diretamente no Windows Explorer.
 pub fn open_local_data_folder(folder_path: &Path) {
     let _ = fs::create_dir_all(folder_path);
+    #[cfg(target_os = "windows")]
+    let _ = Command::new("explorer")
+        .arg(folder_path)
+        .creation_flags(CREATE_NO_WINDOW)
+        .spawn();
+    #[cfg(not(target_os = "windows"))]
     let _ = Command::new("explorer").arg(folder_path).spawn();
 }
 

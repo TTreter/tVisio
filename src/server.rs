@@ -53,6 +53,11 @@ pub struct MobileCameraDevice {
     pub label: String,
 }
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+#[allow(dead_code)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
 pub struct TVisioAppState {
     pub base_dir: PathBuf,
     pub http_port: u16,
@@ -612,8 +617,14 @@ async fn handle_open_external(
     }
     if let Some(url) = payload.get("url").and_then(|v| v.as_str()) {
         if url.starts_with("https://") || url.starts_with("http://") {
+            #[cfg(target_os = "windows")]
             let _ = std::process::Command::new("cmd")
                 .args(["/C", "start", "", url])
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn();
+            #[cfg(not(target_os = "windows"))]
+            let _ = std::process::Command::new("xdg-open")
+                .arg(url)
                 .spawn();
         }
     }
@@ -661,24 +672,37 @@ async fn handle_update_download(
         .unwrap_or("tVisio-Update.exe")
         .to_string();
 
-    let download_dir = if let Ok(profile) = std::env::var("USERPROFILE") {
-        let p = PathBuf::from(profile).join("Downloads");
-        if p.exists() {
-            p
-        } else {
-            get_data_dir().join("_local").join("updates")
-        }
-    } else {
-        get_data_dir().join("_local").join("updates")
-    };
-
+    // Diretório padronizado e seguro para download de atualizações
+    let download_dir = get_data_dir().join("_local").join("updates");
     let _ = std::fs::create_dir_all(&download_dir);
+
+    // Limpa versões de instaladores antigos para não acumular lixo no disco
+    if let Ok(entries) = std::fs::read_dir(&download_dir) {
+        for entry in entries.flatten() {
+            if let Ok(ft) = entry.file_type() {
+                if ft.is_file() {
+                    let name = entry.file_name().to_string_lossy().to_lowercase();
+                    if name.starts_with("tvisio") && name != safe_filename.to_lowercase() {
+                        let _ = std::fs::remove_file(entry.path());
+                    }
+                }
+            }
+        }
+    }
+
     let target_path = download_dir.join(&safe_filename);
     let target_str = target_path.to_string_lossy().to_string();
     let url_string = url.to_string();
 
     let download_res = tokio::task::spawn_blocking(move || {
+        #[cfg(target_os = "windows")]
         let status = std::process::Command::new("curl.exe")
+            .args(["-L", "-s", "-f", "-o", &target_str, &url_string])
+            .creation_flags(CREATE_NO_WINDOW)
+            .status();
+
+        #[cfg(not(target_os = "windows"))]
+        let status = std::process::Command::new("curl")
             .args(["-L", "-s", "-f", "-o", &target_str, &url_string])
             .status();
 
@@ -719,6 +743,7 @@ async fn handle_update_launch(
         return (StatusCode::FORBIDDEN, Json(json!({ "ok": false, "error": "Acesso não autorizado" }))).into_response();
     }
     let file_path = payload.get("file_path").and_then(|v| v.as_str()).unwrap_or("");
+    let open_folder = payload.get("open_folder").and_then(|v| v.as_bool()).unwrap_or(false);
     let path = PathBuf::from(file_path);
     if path.exists() {
         let file_name = path
@@ -732,6 +757,16 @@ async fn handle_update_launch(
             .map(|s| s.to_lowercase())
             == Some("exe".to_string());
 
+        // Se a solicitação for apenas para abrir a pasta no Explorer
+        if open_folder {
+            #[cfg(target_os = "windows")]
+            let _ = std::process::Command::new("explorer.exe")
+                .args(["/select,", file_path])
+                .creation_flags(CREATE_NO_WINDOW)
+                .spawn();
+            return Json(json!({ "ok": true })).into_response();
+        }
+
         if is_exe {
             // Validação estrita: apenas executáveis de instalação ou atualização do tVisio
             let is_tvisio = file_name.starts_with("tvisio") || file_name.contains("setup");
@@ -743,9 +778,15 @@ async fn handle_update_launch(
                     .into_response();
             }
 
-            let _ = std::process::Command::new("cmd")
-                .args(["/C", "start", "", file_path])
+            // Inicia o instalador diretamente sem invocar cmd.exe (zero flash de tela preta)
+            // com argumentos /UPDATE e /NORESTART para upgrade fluido
+            #[cfg(target_os = "windows")]
+            let _ = std::process::Command::new(&file_path)
+                .args(["/UPDATE", "/NORESTART"])
+                .creation_flags(CREATE_NO_WINDOW)
                 .spawn();
+            #[cfg(not(target_os = "windows"))]
+            let _ = std::process::Command::new(&file_path).spawn();
 
             // Se for o instalador de atualização, encerra a instância atual após breve delay
             // para liberar o executável em disco e evitar erro de 'Acesso Negado' (código 5)
@@ -756,8 +797,10 @@ async fn handle_update_launch(
 
             return Json(json!({ "ok": true })).into_response();
         } else {
+            #[cfg(target_os = "windows")]
             let _ = std::process::Command::new("explorer.exe")
                 .args(["/select,", file_path])
+                .creation_flags(CREATE_NO_WINDOW)
                 .spawn();
             return Json(json!({ "ok": true })).into_response();
         }
