@@ -696,8 +696,10 @@ async fn handle_desktop_socket(socket: WebSocket, state: SharedState) {
                         "select_camera_device" => {
                             if let Some(dev_id) = cmd.get("device_id").and_then(|v| v.as_str()) {
                                 s.mobile_selected_cam_id = dev_id.to_string();
+                                s.settings.data.selected_camera_id = dev_id.to_string();
+                                s.settings.save();
                                 s.send_mobile_command(json!({
-                                    "command": "select_camera",
+                                    "command": "select_camera_device",
                                     "device_id": dev_id
                                 }));
                             }
@@ -841,11 +843,15 @@ async fn handle_mobile_ws(
 async fn handle_mobile_socket(socket: WebSocket, state: SharedState) {
     ACTIVE_MOBILE_CLIENTS.fetch_add(1, Ordering::SeqCst);
 
-    let (mut cmd_rx, auto_eco_initial) = {
+    let (mut cmd_rx, auto_eco_initial, initial_cam_id) = {
         let mut s = state.lock().unwrap();
         s.mobile_connected = true;
         s.active_protocol = "Binary Turbo Zero-Queue (Rust SIMD)".to_string();
-        (s.mobile_cmd_tx.subscribe(), s.settings.data.auto_eco_oled)
+        (
+            s.mobile_cmd_tx.subscribe(),
+            s.settings.data.auto_eco_oled,
+            s.settings.data.selected_camera_id.clone(),
+        )
     };
 
     let (mut ws_sender, mut ws_receiver) = socket.split();
@@ -858,6 +864,16 @@ async fn handle_mobile_socket(socket: WebSocket, state: SharedState) {
         "enabled": auto_eco_initial,
     });
     let _ = out_tx.send(Message::Text(init_cmd.to_string()));
+
+    // Restaura câmera física previamente selecionada pelo usuário
+    if !initial_cam_id.is_empty() {
+        let init_cam_cmd = json!({
+            "type": "command",
+            "command": "select_camera_device",
+            "device_id": initial_cam_id,
+        });
+        let _ = out_tx.send(Message::Text(init_cam_cmd.to_string()));
+    }
 
     // Task dedicada de escrita no WebSocket (Comandos + ACKs + Pulso Anti-PSM 500Hz)
     let state_for_writer = state.clone();

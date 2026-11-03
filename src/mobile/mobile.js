@@ -413,6 +413,7 @@
         startCamera();
         sendTelemetry();
         break;
+      case "select_camera":
       case "select_camera_device":
         selectedDeviceId = msg.device_id || "";
         startCamera();

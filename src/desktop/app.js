@@ -253,6 +253,9 @@
         cameraDeviceSelect.appendChild(opt);
       });
     }
+    if (data.selected_cam_id !== undefined && cameraDeviceSelect.value !== data.selected_cam_id) {
+      cameraDeviceSelect.value = data.selected_cam_id;
+    }
 
     // Atualiza lista de interfaces de rede se houver alteração
     if (data.interfaces && JSON.stringify(data.interfaces) !== JSON.stringify(currentInterfaces)) {
