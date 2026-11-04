@@ -1,6 +1,6 @@
 [package]
 name = "tVisio"
-version = "2.2.2"
+version = "2.2.3"
 edition = "2021"
 authors = ["Tiago Treter <@TTreter>"]
 description = "tVisio — Ultra-Low Latency Virtual Webcam (Native Rust Zero-Overhead Engine)"

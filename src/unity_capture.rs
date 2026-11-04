@@ -31,20 +31,21 @@ const UNITY_CAPTURE_CLSID_32: &str = "{5C2CD55C-92AD-4999-8666-912BD3E70020}";
 /// Tamanho máximo da imagem no UnityCapture: 3840 x 2160 x 4 x sizeof(short) = 66.355.200 bytes (4K RGBA)
 const MAX_SHARED_IMAGE_SIZE: u32 = 3840 * 2160 * 4 * 2;
 /// Tamanho do cabeçalho binário (32 bytes): maxSize(4), width(4), height(4), stride(4), format(4), resizemode(4), mirrormode(4), timeout(4)
+#[allow(dead_code)]
 const SHM_HEADER_SIZE: u32 = 32;
-/// Tamanho total do mapeamento compartilhado Win32 (66.355.232 bytes)
-const TOTAL_SHM_SIZE: u32 = SHM_HEADER_SIZE + MAX_SHARED_IMAGE_SIZE;
+/// Tamanho total do mapeamento compartilhado Win32 (66.355.236 bytes / 0x03F48024 correspondente ao UnityCaptureFilter64.dll)
+const TOTAL_SHM_SIZE: u32 = 0x03f4_8024;
 
 // Nomes IPC nativos do filtro DirectShow UnityCapture para o Dispositivo 0 (CapNum 0).
-// OBS/UnityCapture substitui o '0' final por '\0' para CapNum 0 ("UnityCapture_Mutx", "UnityCapture_Data", etc.)
-const IPC_MUTEX_PRIMARY: &[u8] = b"UnityCapture_Mutx\0";
-const IPC_MUTEX_FALLBACK: &[u8] = b"UnityCapture_Mutx0\0";
-const IPC_WANT_PRIMARY: &[u8] = b"UnityCapture_Want\0";
-const IPC_WANT_FALLBACK: &[u8] = b"UnityCapture_Want0\0";
-const IPC_SENT_PRIMARY: &[u8] = b"UnityCapture_Sent\0";
-const IPC_SENT_FALLBACK: &[u8] = b"UnityCapture_Sent0\0";
-const IPC_DATA_PRIMARY: &[u8] = b"UnityCapture_Data\0";
-const IPC_DATA_FALLBACK: &[u8] = b"UnityCapture_Data0\0";
+// O filtro UnityCaptureFilter64.dll sempre anexa '0' no final ("UnityCapture_Mutx0", "UnityCapture_Data0", etc.)
+const IPC_MUTEX_PRIMARY: &[u8] = b"UnityCapture_Mutx0\0";
+const IPC_MUTEX_FALLBACK: &[u8] = b"UnityCapture_Mutx\0";
+const IPC_WANT_PRIMARY: &[u8] = b"UnityCapture_Want0\0";
+const IPC_WANT_FALLBACK: &[u8] = b"UnityCapture_Want\0";
+const IPC_SENT_PRIMARY: &[u8] = b"UnityCapture_Sent0\0";
+const IPC_SENT_FALLBACK: &[u8] = b"UnityCapture_Sent\0";
+const IPC_DATA_PRIMARY: &[u8] = b"UnityCapture_Data0\0";
+const IPC_DATA_FALLBACK: &[u8] = b"UnityCapture_Data\0";
 
 /// Configura as chaves de registro do dispositivo DirectShow no Windows
 /// para que o dispositivo apareça com o nome customizado no OBS, Discord, Meet, Zoom e Teams.
@@ -213,13 +214,13 @@ impl UnityCaptureSharedMem {
 
             // 1. Mutex de Sincronização: tenta abrir existente ou cria para garantir que o objeto exista
             if self.h_mutex.is_null() {
-                let mutex_w: Vec<u16> = "UnityCapture_Mutx\0".encode_utf16().collect();
+                let mutex_w: Vec<u16> = "UnityCapture_Mutx0\0".encode_utf16().collect();
                 let mut h = OpenMutexW(SYNCHRONIZE_RIGHT, 0, mutex_w.as_ptr());
                 if h.is_null() {
                     h = CreateMutexA(ptr::null(), 0, IPC_MUTEX_PRIMARY.as_ptr());
                 }
                 if h.is_null() {
-                    let mutex_fallback_w: Vec<u16> = "UnityCapture_Mutx0\0".encode_utf16().collect();
+                    let mutex_fallback_w: Vec<u16> = "UnityCapture_Mutx\0".encode_utf16().collect();
                     h = OpenMutexW(SYNCHRONIZE_RIGHT, 0, mutex_fallback_w.as_ptr());
                     if h.is_null() {
                         h = CreateMutexA(ptr::null(), 0, IPC_MUTEX_FALLBACK.as_ptr());

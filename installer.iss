@@ -1,8 +1,8 @@
-; Script Inno Setup 6 para o Instalador Oficial do tVisio v2.2.2 (Windows x64)
+; Script Inno Setup 6 para o Instalador Oficial do tVisio v2.2.3 (Windows x64)
 ; ==============================================================================
 
 #define MyAppName "tVisio"
-#define MyAppVersion "2.2.2"
+#define MyAppVersion "2.2.3"
 #define MyAppPublisher "Tiago Treter (@TTreter)"
 #define MyAppURL "https://github.com/TTreter/tVisio"
 #define MyAppExeName "tVisio.exe"
@@ -32,6 +32,7 @@ PrivilegesRequired=admin
 CloseApplications=no
 RestartApplications=no
 RestartIfNeededByRun=no
+AlwaysRestart=no
 
 ; Estilo e Compressão Ultra
 SetupIconFile=assets\icon.ico
@@ -43,7 +44,7 @@ DisableWelcomePage=no
 
 ; Saída do Instalador
 OutputDir=_local\dist
-OutputBaseFilename=tVisio-Setup-v2.2.2-x64
+OutputBaseFilename=tVisio-Setup-v2.2.3-x64
 
 [Languages]
 Name: "brazilianportuguese"; MessagesFile: "compiler:Languages\BrazilianPortuguese.isl"
@@ -56,8 +57,8 @@ Name: "startup"; Description: "Iniciar automaticamente com o Windows"; GroupDesc
 [Files]
 Source: "target\release\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "assets\icon.ico"; DestDir: "{app}"; Flags: ignoreversion
-Source: "assets\driver\UnityCaptureFilter64.dll"; DestDir: "{app}\_local\driver"; Flags: onlyifdoesntexist uninsneveruninstall
-Source: "assets\driver\UnityCaptureFilter32.dll"; DestDir: "{app}\_local\driver"; Flags: onlyifdoesntexist uninsneveruninstall
+Source: "assets\driver\UnityCaptureFilter64.dll"; DestDir: "{app}\_local\driver"; Flags: uninsneveruninstall; Check: ShouldInstallDriver64
+Source: "assets\driver\UnityCaptureFilter32.dll"; DestDir: "{app}\_local\driver"; Flags: uninsneveruninstall; Check: ShouldInstallDriver32
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\icon.ico"
@@ -66,8 +67,8 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 Name: "{commonstartup}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Parameters: "--startup"; Tasks: startup; IconFilename: "{app}\icon.ico"
 
 [Run]
-Filename: "{sys}\regsvr32.exe"; Parameters: "/s /i:""UnityCaptureName=tVisio Virtual Camera"" ""{app}\_local\driver\UnityCaptureFilter64.dll"""; Flags: runhidden
-Filename: "{syswow64}\regsvr32.exe"; Parameters: "/s /i:""UnityCaptureName=tVisio Virtual Camera"" ""{app}\_local\driver\UnityCaptureFilter32.dll"""; Flags: runhidden; Check: Is64BitInstallMode
+Filename: "{sys}\regsvr32.exe"; Parameters: "/s /i:""UnityCaptureName=tVisio Virtual Camera"" ""{app}\_local\driver\UnityCaptureFilter64.dll"""; Flags: runhidden; Check: ShouldInstallDriver64
+Filename: "{syswow64}\regsvr32.exe"; Parameters: "/s /i:""UnityCaptureName=tVisio Virtual Camera"" ""{app}\_local\driver\UnityCaptureFilter32.dll"""; Flags: runhidden; Check: ShouldInstallDriver32
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
 [UninstallRun]
@@ -78,11 +79,28 @@ Filename: "{syswow64}\regsvr32.exe"; Parameters: "/u /s ""{app}\_local\driver\Un
 Type: filesandordirs; Name: "{app}\_local"
 
 [Code]
+function ShouldInstallDriver64(): Boolean;
+begin
+  // Instala o driver apenas se o DLL ainda não existir no disco
+  // Evita tentativas de substituição de DLL travada em memória pelo Chrome/Discord/OBS
+  Result := not FileExists(ExpandConstant('{app}\_local\driver\UnityCaptureFilter64.dll'));
+end;
+
+function ShouldInstallDriver32(): Boolean;
+begin
+  Result := Is64BitInstallMode and not FileExists(ExpandConstant('{app}\_local\driver\UnityCaptureFilter32.dll'));
+end;
+
 function IsAppAlreadyInstalled(): Boolean;
 begin
-  Result := RegKeyExists(HKEY_LOCAL_MACHINE, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{5C2CD55C-92AD-4999-8666-912BD3E70000}_is1')
-         or RegKeyExists(HKEY_CURRENT_USER, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{5C2CD55C-92AD-4999-8666-912BD3E70000}_is1')
-         or FileExists(ExpandConstant('{app}\tVisio.exe'));
+  Result := RegKeyExists(HKLM64, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{5C2CD55C-92AD-4999-8666-912BD3E70000}_is1')
+         or RegKeyExists(HKLM32, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{5C2CD55C-92AD-4999-8666-912BD3E70000}_is1')
+         or RegKeyExists(HKCU64, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{5C2CD55C-92AD-4999-8666-912BD3E70000}_is1')
+         or RegKeyExists(HKCU32, 'SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{5C2CD55C-92AD-4999-8666-912BD3E70000}_is1')
+         or FileExists(ExpandConstant('{autopf}\tVisio\tVisio.exe'))
+         or FileExists(ExpandConstant('{commonpf}\tVisio\tVisio.exe'))
+         or FileExists(ExpandConstant('{commonpf64}\tVisio\tVisio.exe'))
+         or FileExists('C:\Program Files\tVisio\tVisio.exe');
 end;
 
 function ShouldSkipPage(PageID: Integer): Boolean;
